@@ -1,9 +1,8 @@
 from PyQt5.QtWidgets import QMainWindow, QTableWidgetItem, QHeaderView, QMessageBox, QVBoxLayout, QWidget, QHBoxLayout, \
     QPushButton, QLabel, QLineEdit, QComboBox, QApplication
 from PyQt5.QtCore import Qt, pyqtSlot
-from PyQt5.QtGui import QColor, QBrush
+from PyQt5.QtWidgets import QDialog
 from MainMenu import Ui_Form
-import random
 import db
 
 
@@ -158,14 +157,14 @@ class MainMenuWindow(QMainWindow):
         self.update_button_styles('top_failures')
 
     def show_add_data_dialog(self):
-        """Диалог добавления новых данных"""
-        dialog = QWidget()
+        dialog = QDialog(self)  # Замени QWidget() на QDialog(self)
         dialog.setWindowTitle("Добавить новый домен")
-        dialog.setFixedSize(500, 300)  # Увеличил ширину и уменьшил высоту
+        dialog.setFixedSize(500, 300)
+        dialog.setModal(True)  # Делаем диалог модальным
 
         # СОЗДАЕМ НОРМАЛЬНЫЙ ШРИФТ ДЛЯ ДИАЛОГА
         normal_font = dialog.font()
-        normal_font.setPointSize(12)
+        normal_font.setPointSize(14)
 
         dialog.setStyleSheet("""
             QWidget {
