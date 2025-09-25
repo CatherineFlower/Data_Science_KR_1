@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import QMainWindow, QMessageBox, QApplication, QVBoxLayout,
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from login import Ui_Form
+import db
 
 
 class LoginWindow(QMainWindow):
@@ -131,17 +132,33 @@ class LoginWindow(QMainWindow):
         self.ui.lineEdit_2.setStyleSheet(input_style)
 
     def login(self):
-        username = self.ui.lineEdit.text()
+        # Попытка поднять админа из .env, если схема уже создана
+        try:
+            db.ensure_admin_from_env()
+        except Exception:
+            pass
+
+        username = self.ui.lineEdit.text().strip()
         password = self.ui.lineEdit_2.text()
 
-        if username and password:
+        if not username or not password:
+            self.showMessage("Ошибка", "Заполните все поля!", 'warning')
+            return
+
+        try:
+            user = db.authenticate(username, password)
+        except Exception as e:
+            self.showMessage("Ошибка", f"Проблема с БД: {e}", 'error')
+            return
+
+        if user:
             self.showMessage("Успех", "Вход выполнен успешно!", 'info')
             self.close()
             from MainMenuWindow import MainMenuWindow
-            self.main_window = MainMenuWindow()
+            self.main_window = MainMenuWindow(user=user)
             self.main_window.showMaximized()
         else:
-            self.showMessage("Ошибка", "Заполните все поля!", 'warning')
+            self.showMessage("Ошибка", "Неверные логин/пароль.", 'warning')
 
     def create_account(self):
         from CreateUserWindow import CreateUserWindow

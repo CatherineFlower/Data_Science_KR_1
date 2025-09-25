@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import QMainWindow, QMessageBox, QApplication, QVBoxLayout,
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from CreateUser import Ui_Form
+import db
 
 
 class CreateUserWindow(QMainWindow):
@@ -132,21 +133,25 @@ class CreateUserWindow(QMainWindow):
         self.ui.lineEdit_3.setStyleSheet(input_style)
 
     def create_account(self):
-        username = self.ui.lineEdit.text()
+        username = self.ui.lineEdit.text().strip()
         password = self.ui.lineEdit_2.text()
         confirm_password = self.ui.lineEdit_3.text()
 
         if not username or not password or not confirm_password:
             self.showMessage("Ошибка", "Заполните все поля!", 'warning')
             return
-
         if password != confirm_password:
             self.showMessage("Ошибка", "Пароли не совпадают!", 'warning')
+            return
+        try:
+            user = db.register_user(username, password)
+        except Exception as e:
+            self.showMessage("Ошибка", f"Не удалось создать пользователя: {e}", 'error')
             return
 
         self.showMessage("Успех", f"Аккаунт '{username}' создан успешно!", 'info')
         from MainMenuWindow import MainMenuWindow
-        self.mainMenu = MainMenuWindow()
+        self.mainMenu = MainMenuWindow(user=user)
         self.mainMenu.show()
         self.close()
 
