@@ -83,7 +83,7 @@ class LoginWindow(QMainWindow):
         self.ui.label_2.setFont(icon_font)
 
         # Адаптивный размер шрифта для текста
-        text_font_size = max(10, min(16, width // 80, height // 50))
+        text_font_size = max(16, min(16, width // 80, height // 50))
 
         text_font = self.ui.lineEdit.font()
         text_font.setPointSize(text_font_size)
