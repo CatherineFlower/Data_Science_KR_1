@@ -8,38 +8,38 @@
 ## 📸 Скриншоты
 
 **Вход**  
-![Login](docs/img/login_screen.jpg)
+![Login](README_with_images/docs/img/login_screen.jpg)
 
 **Регистрация**  
-![Register](docs/img/register_screen.jpg)
+![Register](README_with_images/docs/img/register_screen.jpg)
 
 **Список доменов пользователя**  
-![Domains](docs/img/domains_list_screen.jpg)
+![Domains](README_with_images/docs/img/domains_list_screen.jpg)
 
 **Пустое рабочее окно**  
-![Main](docs/img/main_empty_screen.jpg)
+![Main](README_with_images/docs/img/main_empty_screen.jpg)
 
 **Добавление домена**  
-![Add Domain](docs/img/add_domain_dialog.jpg)
+![Add Domain](README_with_images/docs/img/add_domain_dialog.jpg)
 
 ---
 
 ## 🗄️ Структура БД и данные
 
 **ER-диаграмма (схема `app`)**  
-![ERD](docs/img/erd_schema.jpg)
+![ERD](README_with_images/docs/img/erd_schema.jpg)
 
 **Пользователи (`app_user`)**  
-![Users](docs/img/users_table.jpg)
+![Users](README_with_images/docs/img/users_table.jpg)
 
 **Домены под мониторинг (`tracked_domain`)**  
-![Tracked domains](docs/img/tracked_domains_table.jpg)
+![Tracked domains](README_with_images/docs/img/tracked_domains_table.jpg)
 
 **Поток метрик, 5‑минутные срезы (`metric_sample`)**  
-![Metric sample](docs/img/metric_sample_table.jpg)
+![Metric sample](README_with_images/docs/img/metric_sample_table.jpg)
 
 **Журнал смен состояния домена (`domain_state_log`)**  
-![State log](docs/img/domain_state_log_table.jpg)
+![State log](README_with_images/docs/img/domain_state_log_table.jpg)
 
 ---
 
