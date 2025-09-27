@@ -114,13 +114,25 @@ pip install PyQt5 psycopg2-binary python-dotenv scikit-learn numpy
 ### Настройка БД
 Создайте базу в PostgreSQL (например, `ds_kr_1`) и заполните файл окружения `src/.env`:
 ```
-PGHOST=localhost
+PGHOST=127.0.0.1
 PGPORT=5432
-PGDATABASE=ds_kr_1
+PGDATABASE=mydb
 PGUSER=postgres
-PGPASSWORD=postgres
+PGPASSWORD=palchevsky
+
+# Logging
+LOG_LEVEL=INFO
+
+# ML detector
+ML_INTERVAL=3
+BASELINE_SAMPLES=600
+P_ATTACK=0.4
+IFOREST_THRESHOLD=-0.1
+
+ADMIN_LOGIN=admin
+ADMIN_PASSWORD=123
 ```
-> При первом запуске скрипты создадут схему и таблицы автоматически (DDL внутри проекта).
+> **Важно:** Автоматического создания схемы и таблиц нет — их нужно создать вручную администратором PostgreSQL.
 
 ### Запуск (два терминала в корне репозитория)
 
