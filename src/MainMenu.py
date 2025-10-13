@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Form(object):
     def setupUi(self, Form):
         Form.setObjectName("Form")
-        Form.resize(902, 641)
+        Form.resize(1200, 800)
         Form.setStyleSheet("background-color:rgba(16, 30, 41, 240);")
 
         # Главный вертикальный layout
@@ -23,203 +23,162 @@ class Ui_Form(object):
         self.verticalLayout_main.setContentsMargins(10, 10, 10, 10)
         self.verticalLayout_main.setSpacing(10)
 
-        # КОНТЕЙНЕР ДЛЯ КНОПОК - будет переключаться между разными layout
+        # КОНТЕЙНЕР ДЛЯ КНОПОК - ФИКСИРОВАННАЯ ВЫСОТА
         self.buttons_container = QtWidgets.QWidget(Form)
         self.buttons_container.setObjectName("buttons_container")
-        self.buttons_container.setMinimumSize(QtCore.QSize(0, 50))
+        self.buttons_container.setFixedHeight(70)  # Фиксированная высота
+        self.buttons_container.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(2, 65, 118, 255);
+                color: rgba(255, 255, 255, 200);
+                border-radius: 5px;
+                padding: 10px;
+                min-height: 30px;
+                min-width: 100px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: rgba(2, 65, 118, 200);
+            }
+            QPushButton:pressed {
+                background-color: rgba(2, 65, 118, 100);
+            }
+        """)
 
-        # Основной layout для контейнера кнопок (обычный режим)
-        self.buttons_main_layout = QtWidgets.QVBoxLayout(self.buttons_container)
-        self.buttons_main_layout.setContentsMargins(0, 0, 0, 0)
-        self.buttons_main_layout.setSpacing(10)
-
-        # Верхняя строка кнопок
-        self.horizontalLayout_top = QtWidgets.QHBoxLayout()
+        # Основной layout для контейнера кнопок - один горизонтальный layout
+        self.horizontalLayout_top = QtWidgets.QHBoxLayout(self.buttons_container)
         self.horizontalLayout_top.setObjectName("horizontalLayout_top")
+        self.horizontalLayout_top.setContentsMargins(0, 0, 0, 0)
         self.horizontalLayout_top.setSpacing(10)
 
+        # Все кнопки в одном горизонтальном layout
         self.pushButton = QtWidgets.QPushButton(self.buttons_container)
-        self.pushButton.setMinimumSize(QtCore.QSize(0, 30))
-        self.pushButton.setStyleSheet("QPushButton#pushButton{\n"
-                                      "background-color:rgba(2, 65, 118, 255);\n"
-                                      "color:rgba(255, 255, 255, 200);\n"
-                                      "border-radius:5px;\n"
-                                      "}\n"
-                                      "QPushButton#pushButton:pressed{\n"
-                                      "padding-left:5px;\n"
-                                      "padding-top:5px;\n"
-                                      "background-color:rgba(2, 65, 118, 100);\n"
-                                      "background-position:calc(100%-10px)center;\n"
-                                      "}\n"
-                                      "QPushButton#pushButton:hover{\n"
-                                      "background-color:rgba(2, 65, 118, 200);\n"
-                                      "}")
+        self.pushButton.setMinimumSize(QtCore.QSize(0, 40))
         self.pushButton.setObjectName("pushButton")
         self.horizontalLayout_top.addWidget(self.pushButton)
 
         self.pushButton_2 = QtWidgets.QPushButton(self.buttons_container)
-        self.pushButton_2.setMinimumSize(QtCore.QSize(0, 30))
-        self.pushButton_2.setStyleSheet("QPushButton#pushButton_2{\n"
-                                        "background-color:rgba(2, 65, 118, 255);\n"
-                                        "color:rgba(255, 255, 255, 200);\n"
-                                        "border-radius:5px;\n"
-                                        "}\n"
-                                        "QPushButton#pushButton_2:pressed{\n"
-                                        "padding-left:5px;\n"
-                                        "padding-top:5px;\n"
-                                        "background-color:rgba(2, 65, 118, 100);\n"
-                                        "background-position:calc(100%-10px)center;\n"
-                                        "}\n"
-                                        "QPushButton#pushButton_2:hover{\n"
-                                        "background-color:rgba(2, 65, 118, 200);\n"
-                                        "}")
+        self.pushButton_2.setMinimumSize(QtCore.QSize(0, 40))
         self.pushButton_2.setObjectName("pushButton_2")
         self.horizontalLayout_top.addWidget(self.pushButton_2)
 
-        # Растяжение для верхних кнопок
-        self.horizontalLayout_top.addStretch()
-
-        # Нижняя строка кнопок
-        self.horizontalLayout_bottom = QtWidgets.QHBoxLayout()
-        self.horizontalLayout_bottom.setObjectName("horizontalLayout_bottom")
-        self.horizontalLayout_bottom.setSpacing(10)
-
         self.pushButton_3 = QtWidgets.QPushButton(self.buttons_container)
-        self.pushButton_3.setMinimumSize(QtCore.QSize(0, 30))
-        self.pushButton_3.setStyleSheet("QPushButton#pushButton_3{\n"
-                                        "background-color:rgba(2, 65, 118, 255);\n"
-                                        "color:rgba(255, 255, 255, 200);\n"
-                                        "border-radius:5px;\n"
-                                        "}\n"
-                                        "QPushButton#pushButton_3:pressed{\n"
-                                        "padding-left:5px;\n"
-                                        "padding-top:5px;\n"
-                                        "background-color:rgba(2, 65, 118, 100);\n"
-                                        "background-position:calc(100%-10px)center;\n"
-                                        "}\n"
-                                        "QPushButton#pushButton_3:hover{\n"
-                                        "background-color:rgba(2, 65, 118, 200);\n"
-                                        "}")
+        self.pushButton_3.setMinimumSize(QtCore.QSize(0, 40))
         self.pushButton_3.setObjectName("pushButton_3")
-        self.horizontalLayout_bottom.addWidget(self.pushButton_3)
+        self.horizontalLayout_top.addWidget(self.pushButton_3)
 
         self.pushButton_4 = QtWidgets.QPushButton(self.buttons_container)
-        self.pushButton_4.setMinimumSize(QtCore.QSize(0, 30))
-        self.pushButton_4.setStyleSheet("QPushButton#pushButton_4{\n"
-                                        "background-color:rgba(2, 65, 118, 255);\n"
-                                        "color:rgba(255, 255, 255, 200);\n"
-                                        "border-radius:5px;\n"
-                                        "}\n"
-                                        "QPushButton#pushButton_4:pressed{\n"
-                                        "padding-left:5px;\n"
-                                        "padding-top:5px;\n"
-                                        "background-color:rgba(2, 65, 118, 100);\n"
-                                        "background-position:calc(100%-10px)center;\n"
-                                        "}\n"
-                                        "QPushButton#pushButton_4:hover{\n"
-                                        "background-color:rgba(2, 65, 118, 200);\n"
-                                        "}")
+        self.pushButton_4.setMinimumSize(QtCore.QSize(0, 40))
         self.pushButton_4.setObjectName("pushButton_4")
-        self.horizontalLayout_bottom.addWidget(self.pushButton_4)
+        self.horizontalLayout_top.addWidget(self.pushButton_4)
 
-        # Растяжение для нижних кнопок
-        self.horizontalLayout_bottom.addStretch()
+        # Дополнительные кнопки
+        self.adminButton = QtWidgets.QPushButton(self.buttons_container)
+        self.adminButton.setMinimumSize(QtCore.QSize(0, 40))
+        self.adminButton.setObjectName("adminButton")
+        self.horizontalLayout_top.addWidget(self.adminButton)
 
-        # Добавляем оба горизонтальных layout в основной layout контейнера
-        self.buttons_main_layout.addLayout(self.horizontalLayout_top)
-        self.buttons_main_layout.addLayout(self.horizontalLayout_bottom)
+        self.btnRefresh = QtWidgets.QPushButton(self.buttons_container)
+        self.btnRefresh.setMinimumSize(QtCore.QSize(0, 40))
+        self.btnRefresh.setObjectName("btnRefresh")
+        self.horizontalLayout_top.addWidget(self.btnRefresh)
+
+        self.btnDeleteDomain = QtWidgets.QPushButton(self.buttons_container)
+        self.btnDeleteDomain.setMinimumSize(QtCore.QSize(0, 40))
+        self.btnDeleteDomain.setObjectName("btnDeleteDomain")
+        self.horizontalLayout_top.addWidget(self.btnDeleteDomain)
+
+        self.btnLogout = QtWidgets.QPushButton(self.buttons_container)
+        self.btnLogout.setMinimumSize(QtCore.QSize(0, 40))
+        self.btnLogout.setObjectName("btnLogout")
+        self.horizontalLayout_top.addWidget(self.btnLogout)
+
+        self.btnDeleteProfile = QtWidgets.QPushButton(self.buttons_container)
+        self.btnDeleteProfile.setMinimumSize(QtCore.QSize(0, 40))
+        self.btnDeleteProfile.setObjectName("btnDeleteProfile")
+        self.horizontalLayout_top.addWidget(self.btnDeleteProfile)
+
+        # Растяжение чтобы кнопки не растягивались по всей ширине
+        self.horizontalLayout_top.addStretch()
 
         # Добавляем контейнер кнопок в главный layout
         self.verticalLayout_main.addWidget(self.buttons_container)
 
         # Средняя часть с таблицей
         self.tableWidget = QtWidgets.QTableWidget(Form)
-        self.tableWidget.setStyleSheet("QTableWidget {\n"
-                                       "    background-color: rgba(16, 30, 41, 240);\n"
-                                       "    border: 1px solid rgba(46, 82, 110, 255);\n"
-                                       "    border-radius: 5px;\n"
-                                       "    gridline-color: rgba(46, 82, 110, 150);\n"
-                                       "    color: rgb(255, 255, 255);\n"
-                                       "    font-size: 12px;\n"
-                                       "}\n"
-                                       "\n"
-                                       "QTableWidget::item {\n"
-                                       "    background-color: rgba(25, 45, 60, 200);\n"
-                                       "    border-bottom: 1px solid rgba(46, 82, 110, 100);\n"
-                                       "    padding: 8px;\n"
-                                       "}\n"
-                                       "\n"
-                                       "QTableWidget::item:selected {\n"
-                                       "    background-color: rgba(2, 65, 118, 200);\n"
-                                       "    color: rgb(255, 255, 255);\n"
-                                       "}\n"
-                                       "\n"
-                                       "QTableWidget::item:hover {\n"
-                                       "    background-color: rgba(35, 55, 75, 200);\n"
-                                       "}\n"
-                                       "\n"
-                                       "QHeaderView::section {\n"
-                                       "    background-color: rgba(2, 65, 118, 255);\n"
-                                       "    color: rgb(255, 255, 255);\n"
-                                       "    border: none;\n"
-                                       "    padding: 8px;\n"
-                                       "    font-weight: bold;\n"
-                                       "}\n"
-                                       "\n"
-                                       "QHeaderView::section:hover {\n"
-                                       "    background-color: rgba(2, 65, 118, 200);\n"
-                                       "}\n"
-                                       "\n"
-                                       "QHeaderView::section:pressed {\n"
-                                       "    background-color: rgba(2, 65, 118, 100);\n"
-                                       "}\n"
-                                       "\n"
-                                       "QTableCornerButton::section {\n"
-                                       "    background-color: rgba(2, 65, 118, 255);\n"
-                                       "    border: none;\n"
-                                       "}\n"
-                                       "\n"
-                                       "QScrollBar:vertical {\n"
-                                       "    border: none;\n"
-                                       "    background-color: rgba(16, 30, 41, 240);\n"
-                                       "    width: 12px;\n"
-                                       "    margin: 0px;\n"
-                                       "}\n"
-                                       "\n"
-                                       "QScrollBar::handle:vertical {\n"
-                                       "    background-color: rgba(46, 82, 110, 150);\n"
-                                       "    border-radius: 6px;\n"
-                                       "    min-height: 20px;\n"
-                                       "}\n"
-                                       "\n"
-                                       "QScrollBar::handle:vertical:hover {\n"
-                                       "    background-color: rgba(46, 82, 110, 200);\n"
-                                       "}\n"
-                                       "\n"
-                                       "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {\n"
-                                       "    height: 0px;\n"
-                                       "}\n"
-                                       "\n"
-                                       "QScrollBar:horizontal {\n"
-                                       "    border: none;\n"
-                                       "    background-color: rgba(16, 30, 41, 240);\n"
-                                       "    height: 12px;\n"
-                                       "    margin: 0px;\n"
-                                       "}\n"
-                                       "\n"
-                                       "QScrollBar::handle:horizontal {\n"
-                                       "    background-color: rgba(46, 82, 110, 150);\n"
-                                       "    border-radius: 6px;\n"
-                                       "    min-width: 20px;\n"
-                                       "}\n"
-                                       "\n"
-                                       "QScrollBar::handle:horizontal:hover {\n"
-                                       "    background-color: rgba(46, 82, 110, 200);\n"
-                                       "}\n"
-                                       "\n"
-                                       "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {\n"
-                                       "    width: 0px;\n"
-                                       "}")
+        self.tableWidget.setStyleSheet("""
+            QTableWidget {
+                background-color: rgba(16, 30, 41, 240);
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 5px;
+                gridline-color: rgba(46, 82, 110, 150);
+                color: rgb(255, 255, 255);
+                font-size: 12px;
+            }
+            QTableWidget::item {
+                background-color: rgba(25, 45, 60, 200);
+                border-bottom: 1px solid rgba(46, 82, 110, 100);
+                padding: 8px;
+            }
+            QTableWidget::item:selected {
+                background-color: rgba(2, 65, 118, 200);
+                color: rgb(255, 255, 255);
+            }
+            QTableWidget::item:hover {
+                background-color: rgba(35, 55, 75, 200);
+            }
+            QHeaderView::section {
+                background-color: rgba(2, 65, 118, 255);
+                color: rgb(255, 255, 255);
+                border: none;
+                padding: 8px;
+                font-weight: bold;
+            }
+            QHeaderView::section:hover {
+                background-color: rgba(2, 65, 118, 200);
+            }
+            QHeaderView::section:pressed {
+                background-color: rgba(2, 65, 118, 100);
+            }
+            QTableCornerButton::section {
+                background-color: rgba(2, 65, 118, 255);
+                border: none;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background-color: rgba(16, 30, 41, 240);
+                width: 12px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: rgba(46, 82, 110, 150);
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: rgba(46, 82, 110, 200);
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar:horizontal {
+                border: none;
+                background-color: rgba(16, 30, 41, 240);
+                height: 12px;
+                margin: 0px;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: rgba(46, 82, 110, 150);
+                border-radius: 6px;
+                min-width: 20px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background-color: rgba(46, 82, 110, 200);
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0px;
+            }
+        """)
         self.tableWidget.setObjectName("tableWidget")
         self.tableWidget.setColumnCount(0)
         self.tableWidget.setRowCount(0)
@@ -234,8 +193,13 @@ class Ui_Form(object):
 
     def retranslateUi(self, Form):
         _translate = QtCore.QCoreApplication.translate
-        Form.setWindowTitle(_translate("Form", "Form"))
+        Form.setWindowTitle(_translate("Form", "Система мониторинга доменов"))
         self.pushButton.setText(_translate("Form", "Топ сбоев"))
         self.pushButton_2.setText(_translate("Form", "Мои домены"))
         self.pushButton_3.setText(_translate("Form", "Добавить данные"))
         self.pushButton_4.setText(_translate("Form", "Показать данные"))
+        self.adminButton.setText(_translate("Form", "Админ"))
+        self.btnRefresh.setText(_translate("Form", "Обновить"))
+        self.btnDeleteDomain.setText(_translate("Form", "Удалить домен"))
+        self.btnLogout.setText(_translate("Form", "Выйти"))
+        self.btnDeleteProfile.setText(_translate("Form", "Удалить профиль"))

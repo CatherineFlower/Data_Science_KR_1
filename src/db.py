@@ -37,7 +37,7 @@ PGHOST = os.getenv("PGHOST", "127.0.0.1")
 PGPORT = int(os.getenv("PGPORT", "5432"))
 PGDATABASE = os.getenv("PGDATABASE", "postgres")
 PGUSER = os.getenv("PGUSER", "postgres")
-PGPASSWORD = os.getenv("PGPASSWORD", "")
+PGPASSWORD = os.getenv("PGPASSWORD", "18")
 DSN = f"host={PGHOST} port={PGPORT} dbname={PGDATABASE} user={PGUSER} password={PGPASSWORD}"
 
 SQLSTATE_MAP = {
@@ -108,7 +108,7 @@ def table_exists(schema: str, table: str) -> bool:
             cur.execute(sql, (schema, table))
             return cur.fetchone() is not None
 
-# -------------------- НЕУЯЗВИМОЕ БАГОПРОТИВЯЩЕЕСЯ ОШИБКОНЕВОЗМОЖНОЕ извлечение SQL --------------------
+# НЕУЯЗВИМОЕ БАГОПРОТИВЯЩЕЕСЯ ОШИБКОНЕВОЗМОЖНОЕ извлечение SQL
 _DOLLAR_TAG = re.compile(r"\$[A-Za-z0-9_]*\$")
 
 def _split_sql(sql_text: str):
@@ -232,7 +232,7 @@ def create_schema(ddl_path: str = "ddl.sql", demo_path: str | None = "demo_data.
     logger.info("Create schema done: statements=%d", executed)
     return executed
 
-# -------------------- Пользователи --------------------
+# Пользователи
 def register_user(login: str, password: str):
     sql = """
     INSERT INTO app.app_user (login, password_hash, is_admin)
@@ -316,7 +316,7 @@ def delete_user(user_id: int):
             cur.execute(sql, (user_id,))
         conn.commit()
 
-# -------------------- Домены --------------------
+# Домены
 def add_domain(user_id: int, domain: str):
     sql_txt = """
     INSERT INTO app.tracked_domain (user_id, domain)
@@ -370,7 +370,7 @@ def list_tracked_domains():
             rows = cur.fetchall()
     return [dict(zip(cols, r)) for r in rows]
 
-# -------------------- Состояния и метрики --------------------
+# Состояния и метрики
 def get_current_state(domain_id: int):
     sql = """
         SELECT state::text, started_at
@@ -426,7 +426,7 @@ def insert_metric_sample(
         conn.commit()
     return row[0]
 
-# -------------------- Топ сбоев --------------------
+# Топ сбоев
 def list_top_failures(limit: int = 100):
     sql = """
     WITH agg AS (
@@ -456,3 +456,111 @@ def list_top_failures(limit: int = 100):
             rows = cur.fetchall()
             cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in rows]
+
+# Утилиты SQL
+def run_select(sql: str, params: tuple | list = ()):
+    #Безопасный SELECT. Возвращает (columns, rows).
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if DB_LOG_SQL_PREVIEW:
+                preview = " ".join(sql.split())[:180]
+                logger.info("SELECT: %s params=%s", preview, params)
+            cur.execute(sql, params)
+            cols = [d.name for d in cur.description]
+            rows = cur.fetchall()
+    return cols, rows
+
+def exec_txn(sql_statements: list[tuple[str, tuple]]):
+    #Выполнить пачку операторов в одной транзакции: [(sql, params), ...]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for sql, params in sql_statements:
+                if DB_LOG_SQL_PREVIEW:
+                    preview = " ".join(sql.split())[:180]
+                    logger.info("TXN: %s params=%s", preview, params)
+                cur.execute(sql, params)
+        conn.commit()
+
+def list_tables(schema: str = "app"):
+    sql = """
+    SELECT table_schema, table_name
+    FROM information_schema.tables
+    WHERE table_schema=%s AND table_type='BASE TABLE'
+    ORDER BY 1,2
+    """
+    return run_select(sql, (schema,))[1]
+
+def list_columns(schema: str, table: str):
+    sql = """
+    SELECT column_name, data_type, is_nullable, column_default, ordinal_position
+    FROM information_schema.columns
+    WHERE table_schema=%s AND table_name=%s
+    ORDER BY ordinal_position
+    """
+    cols, rows = run_select(sql, (schema, table))
+    return [dict(zip(cols, r)) for r in rows]
+
+def preview(sql: str, limit: int = 200, params: tuple | list = ()): 
+    s = sql.strip().rstrip(';')
+    import re as _re
+    if _re.search(r"\blimit\b\s+\d+", s, flags=_re.I) is None:
+        s = s + " LIMIT " + str(limit)
+    return run_select(s, params)
+
+def is_column_protected(schema: str, table: str, column: str) -> bool:
+    sql = """
+      SELECT 1
+      FROM app.protected_column
+      WHERE schema_name=%s AND table_name=%s AND column_name=%s
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (schema, table, column))
+            return cur.fetchone() is not None
+
+
+def list_constraint_names(schema: str, table: str) -> list[str]:
+    sql = """
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = rel.relnamespace
+    WHERE n.nspname=%s AND rel.relname=%s
+    ORDER BY con.conname
+    """
+    return [r[0] for r in run_select(sql, (schema, table))[1]]
+
+def list_fk_pairs(schema: str, left_table: str, right_table: str) -> list[tuple[str,str]]:
+    """Return list of (left_col, right_col) for FK between left/right tables."""
+    sql = """
+    SELECT a_left.attname AS left_col, a_right.attname AS right_col
+    FROM pg_constraint c
+    JOIN pg_class r_right ON r_right.oid = c.conrelid
+    JOIN pg_namespace n_right ON n_right.oid = r_right.relnamespace
+    JOIN pg_class r_left ON r_left.oid = c.confrelid
+    JOIN pg_namespace n_left ON n_left.oid = r_left.relnamespace
+    JOIN unnest(c.conkey) WITH ORDINALITY AS ck(attnum, ord) ON TRUE
+    JOIN unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = ck.ord
+    JOIN pg_attribute a_right ON a_right.attrelid = r_right.oid AND a_right.attnum = ck.attnum
+    JOIN pg_attribute a_left  ON a_left.attrelid  = r_left.oid  AND a_left.attnum  = fk.attnum
+    WHERE c.contype = 'f'
+      AND n_left.nspname = %s AND r_left.relname = %s
+      AND n_right.nspname = %s AND r_right.relname = %s
+    UNION
+    SELECT a_left.attname AS left_col, a_right.attname AS right_col
+    FROM pg_constraint c
+    JOIN pg_class r_left ON r_left.oid = c.conrelid
+    JOIN pg_namespace n_left ON n_left.oid = r_left.relnamespace
+    JOIN pg_class r_right ON r_right.oid = c.confrelid
+    JOIN pg_namespace n_right ON n_right.oid = r_right.relnamespace
+    JOIN unnest(c.conkey) WITH ORDINALITY AS ck(attnum, ord) ON TRUE
+    JOIN unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = ck.ord
+    JOIN pg_attribute a_left ON a_left.attrelid = r_left.oid AND a_left.attnum = ck.attnum
+    JOIN pg_attribute a_right  ON a_right.attrelid  = r_right.oid  AND a_right.attnum  = fk.attnum
+    WHERE c.contype = 'f'
+      AND n_left.nspname = %s AND r_left.relname = %s
+      AND n_right.nspname = %s AND r_right.relname = %s
+    ORDER BY 1,2
+    """
+    cols, rows = run_select(sql, (schema, left_table, schema, right_table, schema, left_table, schema, right_table))
+    return [(l, r) for l, r in rows]

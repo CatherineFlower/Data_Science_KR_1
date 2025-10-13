@@ -1,4 +1,3 @@
--- ===== base =====
 CREATE SCHEMA IF NOT EXISTS ext;
 CREATE EXTENSION IF NOT EXISTS citext     WITH SCHEMA ext;
 CREATE EXTENSION IF NOT EXISTS pgcrypto   WITH SCHEMA ext;
@@ -14,7 +13,7 @@ BEGIN
 END
 $do$ LANGUAGE plpgsql;
 
--- ===== users =====
+-- users
 CREATE TABLE IF NOT EXISTS app.app_user (
   id             BIGSERIAL PRIMARY KEY,
   login          ext.citext NOT NULL UNIQUE,
@@ -23,36 +22,40 @@ CREATE TABLE IF NOT EXISTS app.app_user (
   created_at     TIMESTAMP  NOT NULL DEFAULT now()
 );
 
--- ===== tracked domains =====
+-- tracked domains
 CREATE TABLE IF NOT EXISTS app.tracked_domain (
   id               BIGSERIAL PRIMARY KEY,
-  user_id          BIGINT NOT NULL REFERENCES app.app_user(id) ON DELETE CASCADE,
+  user_id          BIGINT NOT NULL,
   domain           TEXT   NOT NULL,
   submitted_at     TIMESTAMP NOT NULL DEFAULT now(),
   current_state    app.domain_state NOT NULL DEFAULT 'active',
   state_changed_at TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT fk_tracked_domain_user
+    FOREIGN KEY (user_id) REFERENCES app.app_user(id) ON DELETE CASCADE,
   CONSTRAINT uq_user_domain UNIQUE (user_id, domain),
   CONSTRAINT chk_domain_format CHECK (domain ~ '^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$')
 );
 CREATE INDEX IF NOT EXISTS idx_tracked_domain_domain ON app.tracked_domain (lower(domain));
 CREATE INDEX IF NOT EXISTS idx_tracked_domain_state  ON app.tracked_domain (current_state);
 
--- ===== журнал смен статусов =====
+-- журнал смен статусов
 CREATE TABLE IF NOT EXISTS app.domain_state_log (
   id          BIGSERIAL PRIMARY KEY,
-  domain_id   BIGINT NOT NULL REFERENCES app.tracked_domain(id) ON DELETE CASCADE,
+  domain_id   BIGINT NOT NULL,
   event_ts    TIMESTAMP NOT NULL,
   prev_state  app.domain_state,
   new_state   app.domain_state NOT NULL,
-  details     JSONB
+  details     JSONB,
+  CONSTRAINT fk_domain_state_log_domain
+    FOREIGN KEY (domain_id) REFERENCES app.tracked_domain(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_domain_state_log_d_ts ON app.domain_state_log(domain_id, event_ts);
 CREATE INDEX IF NOT EXISTS idx_domain_state_log_new  ON app.domain_state_log(new_state);
 
--- ===== метрики =====
+-- метрики
 CREATE TABLE IF NOT EXISTS app.metric_sample (
   id             BIGSERIAL PRIMARY KEY,
-  domain_id      BIGINT NOT NULL REFERENCES app.tracked_domain(id) ON DELETE CASCADE,
+  domain_id      BIGINT NOT NULL,
   ts             TIMESTAMP NOT NULL,
   packets_per_s  INTEGER NOT NULL CHECK (packets_per_s >= 0),
   uniq_ips       INTEGER NOT NULL CHECK (uniq_ips >= 0),
@@ -60,11 +63,20 @@ CREATE TABLE IF NOT EXISTS app.metric_sample (
   ok             BOOLEAN NOT NULL,
   source         TEXT NOT NULL,
   src_ips        INET[] NOT NULL DEFAULT '{}',
-  extra          JSONB
+  extra          JSONB,
+  CONSTRAINT fk_metric_sample_domain
+    FOREIGN KEY (domain_id) REFERENCES app.tracked_domain(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_metric_sample_d_ts ON app.metric_sample(domain_id, ts);
 
--- ===== функция смены статуса =====
+-- Таблица для экспериментов
+CREATE TABLE IF NOT EXISTS app.exp_table(
+  id BIGSERIAL PRIMARY KEY,
+  text TEXT NOT NULL DEFAULT 'text',
+  num INTEGER NOT NULL DEFAULT 10
+);
+
+-- функция смены статуса
 CREATE OR REPLACE FUNCTION app.fn_set_domain_state(
   p_domain_id BIGINT,
   p_new_state app.domain_state,
@@ -93,7 +105,7 @@ BEGIN
 END;
 $do$;
 
--- ===== представления =====
+-- представления
 DROP VIEW IF EXISTS app.v_domain_current_state;
 
 CREATE VIEW app.v_domain_current_state AS
@@ -112,3 +124,55 @@ FROM app.domain_state_log l
 JOIN app.tracked_domain d ON d.id = l.domain_id
 WHERE l.new_state = 'ddos'
   AND l.event_ts >= (now() - interval '1 hour');
+
+
+-- Таблица защищённых столбцов (не подлежат удалению)
+CREATE TABLE IF NOT EXISTS app.protected_column (
+  schema_name  text    NOT NULL,
+  table_name   text    NOT NULL,
+  column_name  text    NOT NULL,
+  reason       text    NOT NULL,
+  PRIMARY KEY (schema_name, table_name, column_name)
+);
+
+CREATE OR REPLACE FUNCTION app.fn_block_protected_column_drop()
+RETURNS event_trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  r record;
+  sch text; tbl text; col text;
+  rsn text;
+BEGIN
+  FOR r IN
+    SELECT object_type, object_identity
+    FROM pg_event_trigger_dropped_objects()
+    WHERE object_type = 'column'
+  LOOP
+    sch := split_part(r.object_identity, '.', 1);
+    tbl := split_part(r.object_identity, '.', 2);
+    col := split_part(r.object_identity, '.', 3);
+
+    SELECT reason INTO rsn
+    FROM app.protected_column
+    WHERE schema_name = sch AND table_name = tbl AND column_name = col;
+
+    IF rsn IS NOT NULL THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '2F000',
+        MESSAGE = format('Удаление защищённого столбца %I.%I.%I запрещено: %s', sch, tbl, col, rsn);
+    END IF;
+  END LOOP;
+END$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_event_trigger WHERE evtname = 'trg_block_protected_column_drop'
+  ) THEN
+    CREATE EVENT TRIGGER trg_block_protected_column_drop
+    ON sql_drop
+    WHEN TAG IN ('ALTER TABLE')
+    EXECUTE PROCEDURE app.fn_block_protected_column_drop();
+  END IF;
+END $$;
