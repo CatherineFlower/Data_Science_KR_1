@@ -58,6 +58,106 @@ class AlterTableDialog(QDialog):
         self.setWindowTitle("ALTER TABLE — конструктор")
         self.setMinimumWidth(640)
 
+        self.setStyleSheet("""
+            QTableView {
+                background-color: rgba(25, 45, 60, 200);
+            }
+            QDialog {
+                background-color: rgba(16, 30, 41, 240);
+                color: white;
+            }
+            QLabel {
+                color: white;
+                font-size: 13px;
+                padding: 8px;
+            }
+           QComboBox {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 4px;
+                padding: 12px;    
+                min-height: 40px;  
+                font-size: 24px;   
+           }
+            QComboBox:hover {
+                border: 1px solid rgba(66, 122, 160, 255);
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 6px solid transparent;
+                border-right: 6px solid transparent;
+                border-top: 6px solid white;
+                margin-right: 10px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: rgba(25, 45, 60, 255);
+                color: white;
+                border: 1px solid rgba(46, 82, 110, 255);
+                selection-background-color: rgba(2, 65, 118, 255);
+                font-size: 14px;
+                padding: 12px;
+                outline: none;
+            }
+            QComboBox QAbstractItemView::item {
+                min-height: 30px;  
+                padding: 8px;      
+            }
+            QLineEdit {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 4px;
+                padding: 10px;
+                font-size: 13px;
+                min-height: 20px;
+            }
+            QLineEdit:focus {
+                border: 1px solid rgba(66, 122, 160, 255);
+            }
+            QLineEdit::placeholder {
+                color: rgba(200, 200, 200, 150);
+                font-size: 12px;
+            }
+            QCheckBox {
+                color: white;
+                font-size: 13px;
+                spacing: 10px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 3px;
+                background-color: rgba(25, 45, 60, 200);
+            }
+            QCheckBox::indicator:checked {
+                background-color: rgba(2, 65, 118, 255);
+            }
+            QCheckBox::indicator:hover {
+                border: 1px solid rgba(66, 122, 160, 255);
+            }
+            QPushButton {
+                background-color: rgba(2, 65, 118, 255);
+                color: rgba(255, 255, 255, 200);
+                border-radius: 5px;
+                padding: 12px;
+                min-height: 40px;
+                min-width: 120px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(2, 65, 118, 200);
+            }
+            QPushButton:pressed {
+                background-color: rgba(2, 65, 118, 100);
+            }
+        """)
+
         # кэш полного списка таблиц (для восстановления после режима RENAME TABLE)
         self._table_cache = []
         self._rename_filter_mode = False  # флаг: комбобокс отфильтрован для RENAME TABLE
