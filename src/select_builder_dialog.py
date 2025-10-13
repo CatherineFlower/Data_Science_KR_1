@@ -10,6 +10,7 @@ class SelectBuilderDialog(QDialog):
         self.schema = schema
         self.setWindowTitle("SELECT — конструктор")
         self.setMinimumSize(900, 600)
+
         self.setStyleSheet("""
             QDialog {
                 background-color: rgba(16, 30, 41, 240);
@@ -178,6 +179,27 @@ class SelectBuilderDialog(QDialog):
             }
             QScrollBar::handle:horizontal:hover {
                 background-color: rgba(46, 82, 110, 200);
+            }
+            QTableView {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                gridline-color: rgba(46, 82, 110, 150);
+                selection-background-color: rgba(2, 65, 118, 200);
+                selection-color: white;
+                outline: none;
+            }
+            QTableView::item {
+                background-color: transparent;
+                color: white;
+                border-bottom: 1px solid rgba(46, 82, 110, 100);
+                padding: 8px;
+            }
+            QTableCornerButton::section {
+                background-color: rgba(2, 65, 118, 255);
+                border: none;
+            }
+            QAbstractScrollArea {
+                background-color: rgba(25, 45, 60, 200);
             }
         """)
 

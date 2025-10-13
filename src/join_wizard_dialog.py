@@ -1,10 +1,11 @@
+
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QListWidget, QListWidgetItem, QPushButton, QTextEdit,
                              QTableWidget, QTableWidgetItem, QMessageBox)
 from PyQt5.QtCore import Qt
 import db
 
-JOIN_TYPES = ["INNER JOIN","LEFT JOIN","RIGHT JOIN","FULL JOIN"]
+JOIN_TYPES = ["INNER JOIN(Внутреннее Объединение)","LEFT JOIN(Левое внешнее соединение)","RIGHT JOIN(Правое внешнее соединение)","FULL JOIN(Декартовое соединение)"]
 
 class JoinWizardDialog(QDialog):
     def __init__(self, parent=None, schema="app"):
@@ -12,6 +13,7 @@ class JoinWizardDialog(QDialog):
         self.schema = schema
         self.setWindowTitle("Мастер соединений (JOIN)")
         self.setMinimumSize(1000, 640)
+
         self.setStyleSheet("""
                            QDialog {
                                background-color: rgba(16, 30, 41, 240);
@@ -181,28 +183,50 @@ class JoinWizardDialog(QDialog):
                            QScrollBar::handle:horizontal:hover {
                                background-color: rgba(46, 82, 110, 200);
                            }
+                            QTableView {
+                                background-color: rgba(25, 45, 60, 200);
+                                color: white;
+                                gridline-color: rgba(46, 82, 110, 150);
+                                selection-background-color: rgba(2, 65, 118, 200);
+                                selection-color: white;
+                                outline: none;
+                            }
+                            QTableView::item {
+                                background-color: transparent;
+                                color: white;
+                                border-bottom: 1px solid rgba(46, 82, 110, 100);
+                                padding: 8px;
+                            }
+                            QTableCornerButton::section {
+                                background-color: rgba(2, 65, 118, 255);
+                                border: none;
+                            }
+                            QAbstractScrollArea {
+                                background-color: rgba(25, 45, 60, 200);
+                            }
                        """)
 
         L = QVBoxLayout(self)
 
-        hl = QHBoxLayout()
-        self.cbLeft = QComboBox(); self.cbRight = QComboBox()
-        for s,t in db.list_tables(schema):
-            self.cbLeft.addItem(f"{s}.{t}", (s,t))
-            self.cbRight.addItem(f"{s}.{t}", (s,t))
-        self.cbLeft.currentIndexChanged.connect(self._load_cols)
-        self.cbRight.currentIndexChanged.connect(self._load_cols)
-        hl.addWidget(QLabel("Левая:")); hl.addWidget(self.cbLeft,1)
-        hl.addWidget(QLabel("Правая:")); hl.addWidget(self.cbRight,1)
-        L.addLayout(hl)
-
-        hl2 = QHBoxLayout()
-        self.leftCols = QComboBox(); self.rightCols = QComboBox()
+        h1 = QHBoxLayout()
+        h1.addWidget(QLabel("Левая таблица:"))
+        self.cbLeft = QComboBox(); self.cbLeft.addItems([t[1] for t in db.list_tables(schema)])
+        self.cbLeft.currentIndexChanged.connect(self._reload_pairs)
+        h1.addWidget(self.cbLeft,1)
+        h1.addWidget(QLabel("Правая таблица:"))
+        self.cbRight = QComboBox(); self.cbRight.addItems([t[1] for t in db.list_tables(schema)])
+        self.cbRight.currentIndexChanged.connect(self._reload_pairs)
+        h1.addWidget(self.cbRight,1)
+        h1.addWidget(QLabel("Тип:"))
         self.cbType = QComboBox(); self.cbType.addItems(JOIN_TYPES)
-        hl2.addWidget(QLabel("Ключ L:")); hl2.addWidget(self.leftCols,1)
-        hl2.addWidget(QLabel("Ключ R:")); hl2.addWidget(self.rightCols,1)
-        hl2.addWidget(QLabel("Тип:")); hl2.addWidget(self.cbType)
-        L.addLayout(hl2)
+        h1.addWidget(self.cbType)
+        L.addLayout(h1)
+
+        h2 = QHBoxLayout()
+        h2.addWidget(QLabel("Ключ (L = R):"))
+        self.cbPairs = QComboBox()
+        h2.addWidget(self.cbPairs, 2)
+        L.addLayout(h2)
 
         L.addWidget(QLabel("Столбцы в результате:"))
         self.colsList = QListWidget(); self.colsList.setSelectionMode(self.colsList.MultiSelection)
@@ -213,41 +237,75 @@ class JoinWizardDialog(QDialog):
         self.btnRun = QPushButton("Выполнить")
         L.addWidget(self.btnGen); L.addWidget(self.sqlView,1); L.addWidget(self.btnRun)
 
-        self.tbl = QTableWidget(); L.addWidget(self.tbl,3)
+        self.tbl = QTableWidget(); L.addWidget(self.tbl, 3)
 
-        self.btnGen.clicked.connect(self._gen_sql)
+        self.btnGen.clicked.connect(self._generate_sql)
         self.btnRun.clicked.connect(self._run_sql)
-        self._load_cols()
 
-    def _load_cols(self):
-        self.leftCols.clear(); self.rightCols.clear(); self.colsList.clear()
-        sl, tl = self.cbLeft.currentData(); sr, tr = self.cbRight.currentData()
-        lcols = [c["column_name"] for c in db.list_columns(sl, tl)]
-        rcols = [c["column_name"] for c in db.list_columns(sr, tr)]
-        for c in lcols: self.leftCols.addItem(c)
-        for c in rcols: self.rightCols.addItem(c)
-        for c in lcols: self.colsList.addItem(QListWidgetItem(f"{sl}.{tl}.{c}"))
-        for c in rcols: self.colsList.addItem(QListWidgetItem(f"{sr}.{tr}.{c}"))
+        self._reload_pairs()
 
-    def _gen_sql(self):
-        sl, tl = self.cbLeft.currentData();  sr, tr = self.cbRight.currentData()
-        kl = self.leftCols.currentText();    kr = self.rightCols.currentText()
-        jtype = self.cbType.currentText()
-        items = self.colsList.selectedItems()
-        if items:
-            sel = []
-            for it in items:
-                sch, tab, col = it.text().split(".")
-                alias = f'{tab}_{col}'
-                sel.append(f'{sch}.{tab}."{col}" AS "{alias}"')
-            select_sql = ", ".join(sel)
-        else:
-            select_sql = "*"
-        sql = f"""SELECT {select_sql}
-FROM {sl}.{tl} L
-{jtype} {sr}.{tr} R
-  ON L."{kl}" = R."{kr}"
-"""
+    def _reload_pairs(self):
+        lt = self.cbLeft.currentText()
+        rt = self.cbRight.currentText()
+        pairs = []
+        try:
+            pairs = db.list_fk_pairs(self.schema, lt, rt)
+        except Exception:
+            pairs = []
+        try:
+            left_cols = {c["column_name"]: c for c in db.list_columns(self.schema, lt)}
+            right_cols = {c["column_name"]: c for c in db.list_columns(self.schema, rt)}
+            for name in sorted(set(left_cols) & set(right_cols)):
+                pairs.append((name, name))
+        except Exception:
+            pass
+        seen = set(); uniq = []
+        for l, r in pairs:
+            key = (l, r)
+            if key not in seen:
+                seen.add(key); uniq.append(key)
+        self.cbPairs.clear()
+        for l, r in uniq:
+            self.cbPairs.addItem(f'L."{l}" = R."{r}"', (l, r))
+        self.btnGen.setEnabled(bool(uniq))
+        self.btnRun.setEnabled(True)
+
+        self.colsList.clear()
+        try:
+            for c in db.list_columns(self.schema, lt):
+                item = QListWidgetItem(f'L.{c["column_name"]}'); item.setSelected(True)
+                self.colsList.addItem(item)
+            for c in db.list_columns(self.schema, rt):
+                item = QListWidgetItem(f'R.{c["column_name"]}'); item.setSelected(False)
+                self.colsList.addItem(item)
+        except Exception:
+            pass
+
+    def _generate_sql(self):
+        lt = self.cbLeft.currentText()
+        rt = self.cbRight.currentText()
+        join_type = self.cbType.currentText()
+        data = self.cbPairs.currentData()
+        if not data:
+            QMessageBox.warning(self, "Ключ", "Нет доступных пар для соединения"); return
+        kl, kr = data
+
+        sel_cols = []
+        for i in range(self.colsList.count()):
+            item = self.colsList.item(i)
+            if item.isSelected():
+                txt = item.text()
+                if txt.startswith("L."):
+                    sel_cols.append(f'L."{txt[2:]}" AS "L.{txt[2:]}"')
+                elif txt.startswith("R."):
+                    sel_cols.append(f'R."{txt[2:]}" AS "R.{txt[2:]}"')
+        if not sel_cols:
+            sel_cols = ['L.*','R.*']
+
+        sql = f'''SELECT {", ".join(sel_cols)}
+                FROM {self.schema}."{lt}" L
+                {join_type} {self.schema}."{rt}" R
+                ON L."{kl}" = R."{kr}"'''
         self.sqlView.setPlainText(sql)
 
     def _run_sql(self):

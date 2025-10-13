@@ -4,6 +4,12 @@ from PyQt5.QtCore import Qt, pyqtSlot
 from PyQt5.QtWidgets import QDialog
 from MainMenu import Ui_Form
 import db
+from alter_table_dialog import AlterTableDialog
+from select_builder_dialog import SelectBuilderDialog
+from text_search_dialog import TextSearchDialog
+from string_funcs_dialog import StringFuncsDialog
+from join_wizard_dialog import JoinWizardDialog
+
 
 class MainMenuWindow(QMainWindow):
     def __init__(self, parent=None, user=None):
@@ -157,11 +163,12 @@ class MainMenuWindow(QMainWindow):
         self.update_button_styles('top_failures')
 
     def show_add_data_dialog(self):
-        dialog = QDialog(self)
+        dialog = QDialog(self)  # Замени QWidget() на QDialog(self)
         dialog.setWindowTitle("Добавить новый домен")
         dialog.setFixedSize(500, 300)
-        dialog.setModal(True)
+        dialog.setModal(True)  # Делаем диалог модальным
 
+        # СОЗДАЕМ НОРМАЛЬНЫЙ ШРИФТ ДЛЯ ДИАЛОГА
         normal_font = dialog.font()
         normal_font.setPointSize(14)
 
@@ -414,7 +421,6 @@ class MainMenuWindow(QMainWindow):
         self.admin_window = AdminDesignWindow(parent=self, user=self.user)
         self.admin_window.showMaximized()
         self.hide()
-
 
     def domain_from_selected_row(self):
         r = self.ui.tableWidget.currentRow()
