@@ -492,7 +492,7 @@ def list_tables(schema: str = "app"):
 
 def list_columns(schema: str, table: str):
     sql = """
-    SELECT column_name, data_type, is_nullable, column_default, ordinal_position
+    SELECT column_name, data_type, udt_schema, udt_name, is_nullable, column_default, ordinal_position
     FROM information_schema.columns
     WHERE table_schema=%s AND table_name=%s
     ORDER BY ordinal_position

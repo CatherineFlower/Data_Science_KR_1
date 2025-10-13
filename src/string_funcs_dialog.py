@@ -328,14 +328,10 @@ class StringFuncsDialog(QDialog):
         for c in cols:
             name = c.get("column_name")
 
-            dtype = (
-                c.get("data_type")
-                or c.get("udt_name")
-                or c.get("udt")
-                or c.get("type")
-                or ""
-            )
-            norm = str(dtype).lower().strip()
+            data_type = (c.get("data_type") or "").lower()
+            udt_name  = (c.get("udt_name")  or "").lower()
+            base = udt_name if data_type == "user-defined" and udt_name else data_type
+            norm = base.strip()
             self._col_types[name] = norm
             self.cbColumn.addItem(name)
 
