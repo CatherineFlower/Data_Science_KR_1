@@ -4,11 +4,6 @@ from PyQt5.QtCore import Qt, pyqtSlot
 from PyQt5.QtWidgets import QDialog
 from MainMenu import Ui_Form
 import db
-from alter_table_dialog import AlterTableDialog
-from select_builder_dialog import SelectBuilderDialog
-from text_search_dialog import TextSearchDialog
-from string_funcs_dialog import StringFuncsDialog
-from join_wizard_dialog import JoinWizardDialog
 
 
 class MainMenuWindow(QMainWindow):
@@ -29,6 +24,12 @@ class MainMenuWindow(QMainWindow):
         self.ui_container = QWidget()
         self.ui = Ui_Form()
         self.ui.setupUi(self.ui_container)
+
+        self.setup_domain_search_panel()
+
+        # Подключаем обработчики
+        self.domain_search_input.textChanged.connect(self.perform_domain_search)
+        self.domain_search_param_combo.currentTextChanged.connect(self.perform_domain_search)
 
         # Добавляем UI контейнер в основной layout
         main_layout.addWidget(self.ui_container)
@@ -483,3 +484,149 @@ class MainMenuWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка БД", f"{e}");
             return
         self.logout()
+
+    def setup_domain_search_panel(self):
+        """Настройка панели поиска по доменам - интегрируем в layout с кнопками"""
+
+        button_layout = self.ui.horizontalLayout_top
+
+        # Находим индекс stretch элемента
+        stretch_index = -1
+        for i in range(button_layout.count()):
+            item = button_layout.itemAt(i)
+            if item and item.spacerItem():
+                stretch_index = i
+                break
+
+        # Если нашли stretch, вставляем перед ним
+        if stretch_index != -1:
+            # Вставляем элементы поиска перед stretch
+            index = stretch_index
+
+            # Метка поиска
+            search_label = QLabel("Поиск:")
+            search_label.setStyleSheet(
+                "color: white; font-weight: bold; font-size: 24px; margin-right: 8px; padding: 5px;")
+            button_layout.insertWidget(index, search_label)
+            index += 1
+
+            # Поле ввода поиска
+            self.domain_search_input = QLineEdit()
+            self.domain_search_input.setPlaceholderText("Введите домен...")
+            self.domain_search_input.setFixedWidth(250)
+            self.domain_search_input.setStyleSheet("""
+                QLineEdit {
+                    background-color: rgba(25, 45, 60, 200);
+                    color: white;
+                    border: 1px solid rgba(46, 82, 110, 255);
+                    border-radius: 4px;
+                    padding: 8px 12px;
+                    font-size: 24px;
+                    min-height: 20px;
+                    font-weight: bold;
+                }
+                QLineEdit:focus {
+                    border: 1px solid rgba(66, 122, 160, 255);
+                    background-color: rgba(30, 50, 70, 220);
+                }
+                QLineEdit::placeholder {
+                    color: rgba(200, 200, 200, 150);
+                    font-size: 13px;
+                }
+            """)
+            button_layout.insertWidget(index, self.domain_search_input)
+            index += 1
+
+            # Выпадающий список
+            self.domain_search_param_combo = QComboBox()
+            self.domain_search_param_combo.addItems(["LIKE", "ILIKE", "~", "~*", "!~", "!~*"])
+            self.domain_search_param_combo.setFixedWidth(120)
+            self.domain_search_param_combo.setStyleSheet("""
+                QComboBox {
+                    background-color: rgba(25, 45, 60, 200);
+                    color: white;
+                    border: 1px solid rgba(46, 82, 110, 255);
+                    border-radius: 4px;
+                    padding: 8px 12px;
+                    font-size: 24px;
+                    min-height: 20px;
+                }
+                QComboBox:hover {
+                    border: 1px solid rgba(66, 122, 160, 255);
+                }
+                QComboBox::drop-down {
+                    border: none;
+                    width: 25px;
+                }
+                QComboBox::down-arrow {
+                    image: none;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 5px solid white;
+                    margin-right: 8px;
+                }
+                QComboBox QAbstractItemView {
+                    background-color: rgba(25, 45, 60, 255);
+                    color: white;
+                    border: 1px solid rgba(46, 82, 110, 255);
+                    selection-background-color: rgba(2, 65, 118, 255);
+                    font-size: 14px;
+                    outline: none;
+                }
+                QComboBox QAbstractItemView::item {
+                    color: white;
+                    padding: 8px;
+                }
+                QComboBox QAbstractItemView::item:selected {
+                    background-color: rgba(2, 65, 118, 255);
+                    color: white;
+                }
+                QComboBox QAbstractItemView::item:hover {
+                    background-color: rgba(35, 55, 75, 200);
+                    color: white;
+                }
+            """)
+            button_layout.insertWidget(index, self.domain_search_param_combo)
+            index += 1
+
+            # Кнопка сброса
+            self.reset_search_btn = QPushButton("Сброс")
+            self.reset_search_btn.setMinimumSize(70, 40)
+            self.reset_search_btn.setStyleSheet("""
+                           QPushButton {
+                               background-color: rgba(118, 65, 2, 255);  
+                               color: rgba(255, 255, 255, 200);
+                               border-radius: 5px;
+                               padding: 10px;
+                               min-height: 30px;
+                               min-width: 100px;
+                               font-size: 16px;
+                               font-weight: bold;
+                           }
+                           QPushButton:hover {
+                               background-color: rgba(118, 65, 2, 200);  
+                           }
+                           QPushButton:pressed {
+                               background-color: rgba(118, 65, 2, 100);  
+                           }
+                       """)
+            self.reset_search_btn.setToolTip("Clear search")
+            self.reset_search_btn.clicked.connect(self.reset_domain_search)
+            button_layout.insertWidget(index, self.reset_search_btn)
+
+    #метод поиска информации
+    def perform_domain_search(self):
+        """Заглушка для поиска (пока не реализовано)"""
+        pass
+
+
+    def display_domain_search_results(self, rows, title=""):
+        """Отображение результатов поиска по доменам"""
+        pass
+
+    def reset_domain_search(self):
+        """Сброс поиска и возврат к обычному виду"""
+        self.domain_search_input.clear()
+        self.setWindowTitle("Система мониторинга доменов")
+        self.refresh_current()
+        self.ui.btnDeleteDomain.setEnabled(True)

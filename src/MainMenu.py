@@ -36,6 +36,7 @@ class Ui_Form(object):
                 min-height: 30px;
                 min-width: 100px;
                 font-size: 12px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: rgba(2, 65, 118, 200);

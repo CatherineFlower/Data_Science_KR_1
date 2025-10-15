@@ -28,7 +28,7 @@ class StringFuncsDialog(QDialog):
     def __init__(self, parent=None, schema: str = "app", **kwargs):
         super().__init__(parent)
         self.setWindowTitle("Строковые функции")
-        self.resize(900, 600)
+        self.resize(1250, 600)
         self.setStyleSheet("""
                    QDialog {
                        background-color: rgba(16, 30, 41, 240);
@@ -275,7 +275,9 @@ class StringFuncsDialog(QDialog):
 
         # Подсказка по типам
         self.lblHint = QLabel("")
-        self.lblHint.setStyleSheet("color:#a33;")
+        self.lblHint.setStyleSheet("color:#a33;"
+                                   "font-size:24px;"
+                                   "font-weight:bold;")
         root.addWidget(self.lblHint)
 
         # Таблица результата
@@ -328,14 +330,10 @@ class StringFuncsDialog(QDialog):
         for c in cols:
             name = c.get("column_name")
 
-            dtype = (
-                c.get("data_type")
-                or c.get("udt_name")
-                or c.get("udt")
-                or c.get("type")
-                or ""
-            )
-            norm = str(dtype).lower().strip()
+            data_type = (c.get("data_type") or "").lower()
+            udt_name  = (c.get("udt_name")  or "").lower()
+            base = udt_name if data_type == "user-defined" and udt_name else data_type
+            norm = base.strip()
             self._col_types[name] = norm
             self.cbColumn.addItem(name)
 
