@@ -28,7 +28,7 @@ class StringFuncsDialog(QDialog):
     def __init__(self, parent=None, schema: str = "app", **kwargs):
         super().__init__(parent)
         self.setWindowTitle("Строковые функции")
-        self.resize(900, 600)
+        self.resize(1250, 600)
         self.setStyleSheet("""
                    QDialog {
                        background-color: rgba(16, 30, 41, 240);
@@ -275,7 +275,9 @@ class StringFuncsDialog(QDialog):
 
         # Подсказка по типам
         self.lblHint = QLabel("")
-        self.lblHint.setStyleSheet("color:#a33;")
+        self.lblHint.setStyleSheet("color:#a33;"
+                                   "font-size:24px;"
+                                   "font-weight:bold;")
         root.addWidget(self.lblHint)
 
         # Таблица результата
