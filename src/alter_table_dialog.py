@@ -466,7 +466,21 @@ class AlterTableDialog(QDialog):
                     raise ValueError("Выберите столбец")
                 if not newt:
                     raise ValueError("Выберите новый тип")
-                stmts.append((f'ALTER TABLE {full} ALTER COLUMN "{col}" TYPE {newt}', ()))
+                oldt = self._get_column_sql_type(self.schema, t, col)  # например: 'text' или 'text[]'
+                is_new_arr = newt.strip().endswith("[]")
+                is_old_arr = (oldt or "").endswith("[]")
+                # подбираем USING
+                if is_new_arr and not is_old_arr:
+                    # скаляр -> массив: делаем одноэлементный массив
+                    using = f' USING ARRAY["{col}"]::{newt}'
+                elif not is_new_arr and is_old_arr:
+                    # массив -> скаляр: берём первый элемент
+                    using = f' USING ("{col}")[1]::{newt}'
+                else:
+                    # прочие случаи: пробуем явный каст (безопаснее, чем полагаться на автокаст)
+                    using = f' USING "{col}"::{newt}'
+                stmt = f'ALTER TABLE {full} ALTER COLUMN "{col}" TYPE {newt}{using}'
+                stmts.append((stmt, ()))
 
             elif act == "SET/DROP NOT NULL":
                 col = self.cbNNCol.currentText()
@@ -522,3 +536,21 @@ class AlterTableDialog(QDialog):
 
         except Exception as e:
             QMessageBox.critical(self, "Ошибка ALTER TABLE", str(e))
+
+    def _get_column_sql_type(self, schema: str, table: str, column: str) -> str:
+            """
+            Возвращает человекочитаемое имя типа столбца (как format_type), например: 'text', 'integer', 'text[]'.
+            """
+            try:
+                sql = """
+                    SELECT format_type(a.atttypid, a.atttypmod) AS full_type
+                    FROM pg_attribute a
+                    JOIN pg_class c ON c.oid = a.attrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = %s AND c.relname = %s
+                    AND a.attname = %s AND a.attnum > 0 AND NOT a.attisdropped
+                """
+                cols, rows = db.run_select(sql, (schema, table, column))
+                return rows[0][0] if rows else ""
+            except Exception:
+                return ""

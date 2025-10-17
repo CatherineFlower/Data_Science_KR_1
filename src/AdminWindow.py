@@ -43,7 +43,6 @@ class AdminDesignWindow(QMainWindow):
         # Устанавливаем шрифт для всех кнопок
         for button in [
             self.ui.createSchemaButton, self.ui.deleteSchemaButton, self.ui.btnAlterTable, self.ui.btnSelect,
-            self.ui.btnStringFunc, self.ui.btnMasterJoin, self.ui.btnBackMain
         ]:
             button.setFont(button_font)
 

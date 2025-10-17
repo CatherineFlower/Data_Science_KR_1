@@ -92,7 +92,6 @@ class Ui_Form(object):
         self.btnSelect.setObjectName("btnSelect")
         self.gridLayout_buttons.addWidget(self.btnSelect, 0, 3)
 
-
         self.btnStringFunc = QtWidgets.QPushButton(self.buttons_container)
         self.btnStringFunc.setMinimumSize(QtCore.QSize(0, 40))
         self.btnStringFunc.setStyleSheet(button_style)

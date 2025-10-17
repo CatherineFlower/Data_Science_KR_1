@@ -5,7 +5,6 @@ from PyQt5.QtWidgets import QDialog
 from MainMenu import Ui_Form
 import db
 
-
 class MainMenuWindow(QMainWindow):
     def __init__(self, parent=None, user=None):
         super().__init__(parent)
@@ -92,6 +91,7 @@ class MainMenuWindow(QMainWindow):
 
     def show_my_domains(self):
         """Отображение 'Мои домены' из БД"""
+        self.current_view = 'my'
         self.ui.tableWidget.show()
         self.ui.tableWidget.horizontalHeader().setVisible(True)
         self.ui.tableWidget.show()
@@ -126,6 +126,7 @@ class MainMenuWindow(QMainWindow):
 
     def show_top_failures(self):
         """Топ сбоев за час + 'Отслеживают'"""
+        self.current_view = 'top'
         self.ui.tableWidget.show()
         self.ui.tableWidget.horizontalHeader().setVisible(True)
         self.ui.tableWidget.show()
@@ -436,7 +437,6 @@ class MainMenuWindow(QMainWindow):
         return item.text().strip().lower() if item else None
 
 
-
     def delete_selected_domain(self):
         d = self.domain_from_selected_row()
         if not d:
@@ -484,6 +484,7 @@ class MainMenuWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка БД", f"{e}");
             return
         self.logout()
+
 
     def setup_domain_search_panel(self):
         """Настройка панели поиска по доменам - интегрируем в layout с кнопками"""
@@ -614,16 +615,167 @@ class MainMenuWindow(QMainWindow):
             self.reset_search_btn.clicked.connect(self.reset_domain_search)
             button_layout.insertWidget(index, self.reset_search_btn)
 
-    #метод поиска информации
+    def _current_user_id(self) -> int:
+        """ID текущего пользователя из self.user."""
+        if self.user and isinstance(self.user, dict) and 'id' in self.user:
+            return int(self.user['id'])
+        raise RuntimeError("Не удалось определить id текущего пользователя")
+
+    def _active_tab_kind(self) -> str:
+        """
+        Какая вкладка активна: 'my' или 'top'.
+        Используем явный маркер, который выставляется в show_my_domains/show_top_failures.
+        """
+        v = getattr(self, 'current_view', None)
+        if v in ('my', 'top'):
+            return v
+        try:
+            if self.ui.tableWidget.columnCount() >= 2:
+                h1 = self.ui.tableWidget.horizontalHeaderItem(1)
+                if h1 and h1.text() == 'Статус':
+                    return 'my'
+        except Exception:
+            pass
+        return 'top'
+
+    def _build_op_and_param(self, op_text: str, term: str):
+        """
+        Возвращает (оператор, параметр) для поиска.
+        Для LIKE/ILIKE без явных масок — добавляем %term%.
+        """
+        op = (op_text or "ILIKE").strip().upper()
+        allowed_ops = {"LIKE", "ILIKE", "~", "~*", "!~", "!~*"}
+        if op not in allowed_ops:
+            op = "ILIKE"
+        param = term
+        if op in {"LIKE", "ILIKE"} and "%" not in term and "_" not in term:
+            param = f"%{term}%"
+        return op, param
+
+    @pyqtSlot()
     def perform_domain_search(self):
-        """Заглушка для поиска (пока не реализовано)"""
-        pass
+        """
+        Единая функция поиска по одному полю и одному выпадающему оператору.
+        - Во вкладке «Мои домены»: ищем только user_id = текущий в app.v_domain_current_state
+        - Во вкладке «Топ сбоев»: ищем только по доменам пользователя, агрегаты за последний час
+        """
+        try:
+            term = (self.domain_search_input.text() or "").strip()
+            if not term:
+                self.refresh_current()
+                return
 
+            op_text = self.domain_search_param_combo.currentText() if hasattr(self, 'domain_search_param_combo') else 'ILIKE'
+            op, param = self._build_op_and_param(op_text, term)
+            uid = self._current_user_id()
+            kind = self._active_tab_kind()
 
-    def display_domain_search_results(self, rows, title=""):
-        """Отображение результатов поиска по доменам"""
-        pass
+            if kind == 'my':
+                sql = f"""
+                    SELECT
+                        domain,
+                        state::text AS state,
+                        started_at,
+                        tracking_started
+                    FROM app.v_domain_current_state
+                    WHERE user_id = %s
+                      AND domain {op} %s
+                    ORDER BY domain
+                """
+                cols, rows = db.run_select(sql, (uid, param))
+                data = [dict(zip(cols, r)) for r in rows]
 
+                self.ui.tableWidget.show()
+                self.ui.tableWidget.horizontalHeader().setVisible(True)
+                self.table_visible = True
+                self.ui.btnDeleteDomain.setEnabled(True)
+                self.ui.tableWidget.setColumnCount(4)
+                self.ui.tableWidget.setHorizontalHeaderLabels(['Домен', 'Статус', 'Последнее изменение', 'Дата добавления'])
+                self.ui.tableWidget.setRowCount(len(data))
+                data_font = self.ui.tableWidget.font()
+                data_font.setPointSize(18)
+                for r, d in enumerate(data):
+                    vals = [
+                        d.get('domain', ''),
+                        d.get('state', ''),
+                        str(d.get('started_at') or ''),
+                        str(d.get('tracking_started') or '')
+                    ]
+                    for c, v in enumerate(vals):
+                        item = QTableWidgetItem(str(v))
+                        item.setFont(data_font)
+                        item.setTextAlignment(Qt.AlignCenter)
+                        self.ui.tableWidget.setItem(r, c, item)
+                header = self.ui.tableWidget.horizontalHeader()
+                header.setSectionResizeMode(0, QHeaderView.Stretch)
+                header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+                header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+                header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+                self.update_button_styles('my_domains')
+                self.setWindowTitle(f"Система мониторинга доменов — Мои домены (поиск {op})")
+
+            else:
+                sql = f"""
+                    WITH dd AS (
+                        SELECT domain, event_ts
+                        FROM app.v_ddos_events_last_hour
+                        WHERE domain {op} %s
+                    ),
+                    agg AS (
+                        SELECT domain,
+                               COUNT(*)      AS ddos_count_hour,
+                               MAX(event_ts) AS last_ddos_ts
+                        FROM dd
+                        GROUP BY domain
+                    ),
+                    watchers AS (
+                        SELECT lower(domain) AS domain_lc, COUNT(*) AS watchers
+                        FROM app.tracked_domain
+                        GROUP BY lower(domain)
+                    )
+                    SELECT a.domain,
+                           a.ddos_count_hour,
+                           a.last_ddos_ts,
+                           COALESCE(w.watchers, 0) AS watchers
+                    FROM agg a
+                    LEFT JOIN watchers w ON lower(a.domain) = w.domain_lc
+                    ORDER BY a.ddos_count_hour DESC, a.last_ddos_ts DESC, a.domain
+                """
+                cols, rows = db.run_select(sql, (param,))
+                data = [dict(zip(cols, r)) for r in rows]
+
+                self.ui.tableWidget.show()
+                self.ui.tableWidget.horizontalHeader().setVisible(True)
+                self.table_visible = True
+                self.ui.btnDeleteDomain.setEnabled(False)
+                self.ui.tableWidget.setColumnCount(4)
+                self.ui.tableWidget.setHorizontalHeaderLabels(
+                    ['Домен', 'Количество ошибок за час', 'Последняя ошибка', 'Отслеживают'])
+                self.ui.tableWidget.setRowCount(len(data))
+                data_font = self.ui.tableWidget.font()
+                data_font.setPointSize(18)
+                for row, d in enumerate(data):
+                    vals = [
+                        d.get('domain', ''),
+                        str(d.get('ddos_count_hour') or 0),
+                        str(d.get('last_ddos_ts') or ''),
+                        str(d.get('watchers') or 0)
+                    ]
+                    for col, value in enumerate(vals):
+                        item = QTableWidgetItem(value)
+                        item.setFont(data_font)
+                        item.setTextAlignment(Qt.AlignCenter)
+                        self.ui.tableWidget.setItem(row, col, item)
+                header = self.ui.tableWidget.horizontalHeader()
+                header.setSectionResizeMode(0, QHeaderView.Stretch)
+                header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+                header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+                header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+                self.update_button_styles('top_failures')
+                self.setWindowTitle(f"Система мониторинга доменов — Топ сбоев (поиск {op})")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка поиска", str(e))
     def reset_domain_search(self):
         """Сброс поиска и возврат к обычному виду"""
         self.domain_search_input.clear()

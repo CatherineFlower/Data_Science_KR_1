@@ -492,7 +492,7 @@ def list_tables(schema: str = "app"):
 
 def list_columns(schema: str, table: str):
     sql = """
-    SELECT column_name, data_type, is_nullable, column_default, ordinal_position
+    SELECT column_name, data_type, udt_schema, udt_name, is_nullable, column_default, ordinal_position
     FROM information_schema.columns
     WHERE table_schema=%s AND table_name=%s
     ORDER BY ordinal_position
@@ -518,6 +518,17 @@ def is_column_protected(schema: str, table: str, column: str) -> bool:
             cur.execute(sql, (schema, table, column))
             return cur.fetchone() is not None
 
+def protect_column(schema: str, table: str, column: str, reason: str):
+    sql = """
+      INSERT INTO app.protected_column(schema_name, table_name, column_name, reason)
+      VALUES (%s,%s,%s,%s)
+      ON CONFLICT (schema_name, table_name, column_name)
+      DO UPDATE SET reason = EXCLUDED.reason
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (schema, table, column, reason))
+        conn.commit()
 
 def list_constraint_names(schema: str, table: str) -> list[str]:
     sql = """
