@@ -14,7 +14,7 @@
 ![Register](README_with_images/docs/img/register_screen.jpg)
 
 **Список доменов пользователя**  
-![Domains](README_with_images/docs/img/domains_list_screen.jpg)
+![Domains](README_with_images/docs/img/domains_list_screen_2.jpg)
 
 **Пустое рабочее окно**  
 ![Main](README_with_images/docs/img/main_empty_screen.jpg)
@@ -22,12 +22,27 @@
 **Добавление домена**  
 ![Add Domain](README_with_images/docs/img/add_domain_dialog.jpg)
 
+**Меню администратора**  
+![Admin menu](README_with_images/docs/img/admin_menu.jpg)
+
+**SELECT конструктор**  
+![Select constructor](README_with_images/docs/img/select_constructor.jpg)
+
+**Строковые функции**  
+![String functions](README_with_images/docs/img/string_functions.jpg)
+
+**Мастер соединений**  
+![Join Master](README_with_images/docs/img/join_master.jpg)
+
+**ALTER TABLE конструктор**  
+![ALTER TABLE constructor](README_with_images/docs/img/alter_table_constructor.jpg)
+
 ---
 
 ## 🗄️ База данных и данные
 
 **ER-диаграмма (схема `app`)**  
-![ERD](README_with_images/docs/img/erd_schema.jpg)
+![ERD](README_with_images/docs/img/erd_schema_2.jpg)
 
 **Пользователи (`app_user`)**  
 ![Users](README_with_images/docs/img/users_table.jpg)
@@ -40,6 +55,9 @@
 
 **Журнал смен состояния домена (`domain_state_log`)**  
 ![State log](README_with_images/docs/img/domain_state_log_table.jpg)
+
+**Таблица защищенных столбцов (`protected_column`)**  
+![Protected column](README_with_images/docs/img/protected_column.jpg)
 
 > Типы: текстовые/числовые/булевы, `timestamp`, ENUM (состояния), массивы (`inet[]`), `JSONB`.  
 > Ограничения: `NOT NULL`, `UNIQUE`, `CHECK`, `PRIMARY/FOREIGN KEY` + `ON DELETE/ON UPDATE`.
