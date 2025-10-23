@@ -3,6 +3,8 @@ from PyQt5.QtWidgets import (
     QLineEdit, QPushButton, QMessageBox, QCheckBox, QStackedWidget, QWidget
 )
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QRegularExpression
+from PyQt5.QtGui import QRegularExpressionValidator
 import db
 
 ACTIONS = [
@@ -68,8 +70,9 @@ class AlterTableDialog(QDialog):
             }
             QLabel {
                 color: white;
-                font-size: 13px;
+                font-size: 23px;
                 padding: 8px;
+                font-weight: bold;
             }
            QComboBox {
                 background-color: rgba(25, 45, 60, 200);
@@ -99,7 +102,7 @@ class AlterTableDialog(QDialog):
                 color: white;
                 border: 1px solid rgba(46, 82, 110, 255);
                 selection-background-color: rgba(2, 65, 118, 255);
-                font-size: 14px;
+                font-size: 24px;
                 padding: 12px;
                 outline: none;
             }
@@ -113,20 +116,23 @@ class AlterTableDialog(QDialog):
                 border: 1px solid rgba(46, 82, 110, 255);
                 border-radius: 4px;
                 padding: 10px;
-                font-size: 13px;
+                font-size: 23px;
                 min-height: 20px;
+                font-weight: bold;
             }
             QLineEdit:focus {
                 border: 1px solid rgba(66, 122, 160, 255);
             }
             QLineEdit::placeholder {
                 color: rgba(200, 200, 200, 150);
-                font-size: 12px;
+                font-size: 23px;
+                font-weight: bold;
             }
             QCheckBox {
                 color: white;
-                font-size: 13px;
+                font-size: 24px;
                 spacing: 10px;
+                font-weight: bold;
             }
             QCheckBox::indicator {
                 width: 18px;
@@ -143,12 +149,13 @@ class AlterTableDialog(QDialog):
             }
             QPushButton {
                 background-color: rgba(2, 65, 118, 255);
-                color: rgba(255, 255, 255, 200);
+                color: white;
                 border-radius: 5px;
                 padding: 12px;
                 min-height: 40px;
                 min-width: 120px;
-                font-size: 13px;
+                font-size: 24px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: rgba(2, 65, 118, 200);
@@ -305,8 +312,21 @@ class AlterTableDialog(QDialog):
         # Первичная загрузка
         self._reload_columns_and_constraints()
         self._on_action_changed(self.cbAction.currentText())
+        all_line_edits = [
+            self.edAddName,
+            self.edDefaultAdd,
+            self.edNewName,
+            self.edDefault,
+            self.edCName,
+            self.edCBody,
+            self.edNewTableName
+        ]
+        for widget in all_line_edits:  # твой список QLineEdit
+            widget.setValidator(QRegularExpressionValidator(
+                QRegularExpression(r"^[^`]*$")
+            ))
 
-    # Служебные методы 
+    # Служебные методы
 
     def _load_tables_into_combo(self):
         """Загрузить список таблиц схемы в комбобокс и сохранить кэш полного списка."""
@@ -554,3 +574,6 @@ class AlterTableDialog(QDialog):
                 return rows[0][0] if rows else ""
             except Exception:
                 return ""
+
+
+

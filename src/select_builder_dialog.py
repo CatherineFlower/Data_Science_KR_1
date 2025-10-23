@@ -43,7 +43,7 @@ class SelectBuilderDialog(QDialog):
                 border-radius: 4px;
                 padding: 12px;
                 min-height: 40px;
-                font-size: 20px;
+                font-size: 20px;   
             }
             QComboBox:hover {
                 border: 1px solid rgba(66, 122, 160, 255);
@@ -78,7 +78,7 @@ class SelectBuilderDialog(QDialog):
                 border: 1px solid rgba(46, 82, 110, 255);
                 border-radius: 4px;
                 padding: 10px;
-                font-size: 13px;
+                font-size: 24x;
                 min-height: 20px;
             }
             QLineEdit:focus {
@@ -159,7 +159,8 @@ class SelectBuilderDialog(QDialog):
                 padding: 12px;
                 min-height: 40px;
                 min-width: 120px;
-                font-size: 13px;
+                font-size: 18px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: rgba(2, 65, 118, 200);
@@ -325,6 +326,8 @@ class SelectBuilderDialog(QDialog):
         self.cbSelAggFunc.currentIndexChanged.connect(self._on_select_agg_func_change)
 
         self._load_columns()
+        for lst in (self.colsList, self.selAggList, self.havingList):
+            lst.setFocusPolicy(Qt.NoFocus)
 
     # UI helpers 
     def _on_having_op_change(self):
@@ -491,4 +494,4 @@ class SelectBuilderDialog(QDialog):
                 for c,v in enumerate(row):
                     self.tbl.setItem(r,c, QTableWidgetItem("" if v is None else str(v)))
         except Exception as e:
-            QMessageBox.critical(self, "Ошибка SELECT", str(e))
+            QMessageBox.critical(self, "Ошибка SELECT", "Некорректно введены данные")
