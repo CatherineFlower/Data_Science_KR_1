@@ -456,3 +456,53 @@ def list_top_failures(limit: int = 100):
             rows = cur.fetchall()
             cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in rows]
+
+# ======== UNIVERSAL SQL HELPERS ========
+def run_select(sql: str, params: tuple | list = ()):
+    """Безопасный SELECT. Возвращает (columns, rows)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if DB_LOG_SQL_PREVIEW:
+                preview = " ".join(sql.split())[:180]
+                logger.info("SELECT: %s params=%s", preview, params)
+            cur.execute(sql, params)
+            cols = [d.name for d in cur.description]
+            rows = cur.fetchall()
+    return cols, rows
+
+def exec_txn(sql_statements: list[tuple[str, tuple]]):
+    """Выполнить пачку операторов в одной транзакции: [(sql, params), ...]"""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for sql, params in sql_statements:
+                if DB_LOG_SQL_PREVIEW:
+                    preview = " ".join(sql.split())[:180]
+                    logger.info("TXN: %s params=%s", preview, params)
+                cur.execute(sql, params)
+        conn.commit()
+
+def list_tables(schema: str = "app"):
+    sql = """
+    SELECT table_schema, table_name
+    FROM information_schema.tables
+    WHERE table_schema=%s AND table_type='BASE TABLE'
+    ORDER BY 1,2
+    """
+    return run_select(sql, (schema,))[1]
+
+def list_columns(schema: str, table: str):
+    sql = """
+    SELECT column_name, data_type, is_nullable, column_default, ordinal_position
+    FROM information_schema.columns
+    WHERE table_schema=%s AND table_name=%s
+    ORDER BY ordinal_position
+    """
+    cols, rows = run_select(sql, (schema, table))
+    return [dict(zip(cols, r)) for r in rows]
+
+def preview(sql: str, limit: int = 200):
+    s = sql.strip().rstrip(';')
+    import re as _re
+    if _re.search(r"\blimit\b\s+\d+", s, flags=_re.I) is None:
+        s = s + " LIMIT " + str(limit)
+    return run_select(s)

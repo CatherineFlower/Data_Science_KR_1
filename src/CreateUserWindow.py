@@ -152,7 +152,7 @@ class CreateUserWindow(QMainWindow):
         self.showMessage("Успех", f"Аккаунт '{username}' создан успешно!", 'info')
         from MainMenuWindow import MainMenuWindow
         self.mainMenu = MainMenuWindow(user=user)
-        self.mainMenu.show()
+        self.mainMenu.showMaximized()
         self.close()
 
     def showMessage(self, title, message, message_type='info'):

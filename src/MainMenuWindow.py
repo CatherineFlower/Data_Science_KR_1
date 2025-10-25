@@ -5,7 +5,6 @@ from PyQt5.QtWidgets import QDialog
 from MainMenu import Ui_Form
 import db
 
-
 class MainMenuWindow(QMainWindow):
     def __init__(self, parent=None, user=None):
         super().__init__(parent)
@@ -63,6 +62,7 @@ class MainMenuWindow(QMainWindow):
         self.ui.btnDeleteDomain.clicked.connect(self.delete_selected_domain)
         self.ui.btnLogout.clicked.connect(self.logout)
         self.ui.btnDeleteProfile.clicked.connect(self.delete_profile)
+
 
         # Дополнительная настройка таблицы
         self.setup_table()
@@ -157,12 +157,11 @@ class MainMenuWindow(QMainWindow):
         self.update_button_styles('top_failures')
 
     def show_add_data_dialog(self):
-        dialog = QDialog(self)  # Замени QWidget() на QDialog(self)
+        dialog = QDialog(self)
         dialog.setWindowTitle("Добавить новый домен")
         dialog.setFixedSize(500, 300)
-        dialog.setModal(True)  # Делаем диалог модальным
+        dialog.setModal(True)
 
-        # СОЗДАЕМ НОРМАЛЬНЫЙ ШРИФТ ДЛЯ ДИАЛОГА
         normal_font = dialog.font()
         normal_font.setPointSize(14)
 
@@ -411,128 +410,17 @@ class MainMenuWindow(QMainWindow):
         if not self.user or not self.user.get('is_admin'):
             QMessageBox.warning(self, "Доступ запрещён", "Нужны права администратора.")
             return
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QPushButton
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Администрирование")
-        lay = QVBoxLayout(dlg)
-        btn_create = QPushButton("Создать схему в БД")
-        btn_drop = QPushButton("Удалить схему")
-        lay.addWidget(btn_create)
-        lay.addWidget(btn_drop)
+        from AdminWindow import AdminDesignWindow
+        self.admin_window = AdminDesignWindow(parent=self, user=self.user)
+        self.admin_window.showMaximized()
+        self.hide()
 
-        # Стилизуем кнопки в диалоге админ-панели
-        admin_button_style = """
-            QPushButton {
-                background-color: rgba(2, 65, 118, 255);
-                color: rgba(255, 255, 255, 200);
-                border-radius: 5px;
-                padding: 10px;
-                min-height: 30px;
-            }
-            QPushButton:hover {
-                background-color: rgba(2, 65, 118, 200);
-            }
-            QPushButton:pressed {
-                background-color: rgba(2, 65, 118, 100);
-            }
-        """
-        btn_create.setStyleSheet(admin_button_style)
-        btn_drop.setStyleSheet(admin_button_style)
-
-        def do_create():
-            try:
-                cnt = db.create_schema("ddl.sql")
-                # Если вход эфемерный - создаём существующий id админа в бд
-                try:
-                    new_admin = db.ensure_admin_from_env()
-                    if new_admin:
-                        self.user = new_admin
-                except Exception:
-                    pass
-                QMessageBox.information(self, "OK", f"Схема создана. Выполнено операторов: {cnt}")
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", str(e))
-
-        def do_drop():
-            ret = QMessageBox.question(self, "Подтверждение", "Удалить схему app? Данные будут потеряны.",
-                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if ret == QMessageBox.Yes:
-                try:
-                    db.drop_schema("app")
-                    QMessageBox.information(self, "OK", "Схема удалена.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Ошибка", str(e))
-
-        btn_create.clicked.connect(do_create)
-        btn_drop.clicked.connect(do_drop)
-        dlg.exec_()
 
     def domain_from_selected_row(self):
         r = self.ui.tableWidget.currentRow()
         if r < 0: return None
         item = self.ui.tableWidget.item(r, 0)
         return item.text().strip().lower() if item else None
-
-
-    def open_admin_panel(self):
-        if not self.user or not self.user.get('is_admin'):
-            QMessageBox.warning(self, "Доступ запрещён", "Нужны права администратора.")
-            return
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QPushButton
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Администрирование")
-        lay = QVBoxLayout(dlg)
-        btn_create = QPushButton("Создать схему в БД")
-        btn_drop = QPushButton("Удалить схему")
-        lay.addWidget(btn_create)
-        lay.addWidget(btn_drop)
-
-        # Стилизуем кнопки в диалоге админ-панели
-        admin_button_style = """
-            QPushButton {
-                background-color: rgba(2, 65, 118, 255);
-                color: rgba(255, 255, 255, 200);
-                border-radius: 5px;
-                padding: 10px;
-                min-height: 30px;
-            }
-            QPushButton:hover {
-                background-color: rgba(2, 65, 118, 200);
-            }
-            QPushButton:pressed {
-                background-color: rgba(2, 65, 118, 100);
-            }
-        """
-        btn_create.setStyleSheet(admin_button_style)
-        btn_drop.setStyleSheet(admin_button_style)
-
-        def do_create():
-            try:
-                cnt = db.create_schema("ddl.sql")
-                # Если вход эфемерный - создаём существующий id админа в бд
-                try:
-                    new_admin = db.ensure_admin_from_env()
-                    if new_admin:
-                        self.user = new_admin
-                except Exception:
-                    pass
-                QMessageBox.information(self, "OK", f"Схема создана. Выполнено операторов: {cnt}")
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", str(e))
-
-        def do_drop():
-            ret = QMessageBox.question(self, "Подтверждение", "Удалить схему app? Данные будут потеряны.",
-                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if ret == QMessageBox.Yes:
-                try:
-                    db.drop_schema("app")
-                    QMessageBox.information(self, "OK", "Схема удалена.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Ошибка", str(e))
-
-        btn_create.clicked.connect(do_create)
-        btn_drop.clicked.connect(do_drop)
-        dlg.exec_()
 
     def domain_from_selected_row(self):
         r = self.ui.tableWidget.currentRow()
