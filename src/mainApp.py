@@ -6,6 +6,7 @@ from LoginWindow import LoginWindow
 def main():
     app = Application(sys.argv)
 
+    # Создаем и показываем окно входа вместо главного окна
     login_window = LoginWindow()
     login_window.show()
 

@@ -57,6 +57,7 @@ class Ui_Form(object):
                 min-height: 40px;
                 min-width: 120px;
                 font-size: 16px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: rgba(2, 65, 118, 200);
@@ -91,29 +92,23 @@ class Ui_Form(object):
         self.btnSelect.setObjectName("btnSelect")
         self.gridLayout_buttons.addWidget(self.btnSelect, 0, 3)
 
-        self.btnSearch = QtWidgets.QPushButton(self.buttons_container)
-        self.btnSearch.setMinimumSize(QtCore.QSize(0, 40))
-        self.btnSearch.setStyleSheet(button_style)
-        self.btnSearch.setObjectName("btnSearch")
-        self.gridLayout_buttons.addWidget(self.btnSearch, 1, 0)
-
         self.btnStringFunc = QtWidgets.QPushButton(self.buttons_container)
         self.btnStringFunc.setMinimumSize(QtCore.QSize(0, 40))
         self.btnStringFunc.setStyleSheet(button_style)
         self.btnStringFunc.setObjectName("btnStringFunc")
-        self.gridLayout_buttons.addWidget(self.btnStringFunc, 1, 1)
+        self.gridLayout_buttons.addWidget(self.btnStringFunc, 1, 0)
 
         self.btnMasterJoin = QtWidgets.QPushButton(self.buttons_container)
         self.btnMasterJoin.setMinimumSize(QtCore.QSize(0, 40))
         self.btnMasterJoin.setStyleSheet(button_style)
         self.btnMasterJoin.setObjectName("btnMasterJoin")
-        self.gridLayout_buttons.addWidget(self.btnMasterJoin, 1, 2)
+        self.gridLayout_buttons.addWidget(self.btnMasterJoin, 1, 1)
 
         self.btnBackMain = QtWidgets.QPushButton(self.buttons_container)
         self.btnBackMain.setMinimumSize(QtCore.QSize(0, 40))
         self.btnBackMain.setStyleSheet(button_style)  # Такая же стилизация как у остальных
         self.btnBackMain.setObjectName("btnBackMain")
-        self.gridLayout_buttons.addWidget(self.btnBackMain, 1, 3)
+        self.gridLayout_buttons.addWidget(self.btnBackMain, 1, 2)
 
         # Добавляем контейнер кнопок в главный layout
         self.verticalLayout_main.addWidget(self.buttons_container)
@@ -144,7 +139,6 @@ class Ui_Form(object):
         self.deleteSchemaButton.setText(_translate("Form", "Удалить схему"))
         self.btnAlterTable.setText(_translate("Form", "Изменить таблицу"))
         self.btnSelect.setText(_translate("Form", "SELECT запросы"))
-        self.btnSearch.setText(_translate("Form", "Поиск данных"))
         self.btnStringFunc.setText(_translate("Form", "Строковые функции"))
         self.btnMasterJoin.setText(_translate("Form", "Мастер соединений"))
         self.btnBackMain.setText(_translate("Form", "Главное меню"))
