@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBo
 from PyQt5.QtCore import Qt
 import db
 
-OPS = ["LIKE","ILIKE","~","~*","!~","!~*"]
+OPS = ["LIKE","ILIKE", "SIMILAR TO", "NOT SIMILAR TO", "~","~*","!~","!~*"]
 
 class TextSearchDialog(QDialog):
     def __init__(self, parent=None, schema="app"):
@@ -241,7 +241,7 @@ class TextSearchDialog(QDialog):
         sql = f'SELECT * FROM {s}.{t} WHERE "{col}" {op} %s'
         # Подготовка параметра для LIKE/ILIKE
         param = pat
-        if op in ("LIKE","ILIKE") and "%" not in param and "_" not in param:
+        if op in ("LIKE","ILIKE", "SIMILAR TO", "NOT SIMILAR TO") and "%" not in param and "_" not in param:
             param = f"%{param}%"
         try:
             cols, rows = db.preview(sql, limit=500, params=(param,))

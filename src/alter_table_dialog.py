@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QLineEdit, QPushButton, QMessageBox, QCheckBox, QStackedWidget, QWidget
 )
+from user_types_dialog import get_udt_names
 from PyQt5.QtCore import Qt
 import db
 
@@ -197,6 +198,8 @@ class AlterTableDialog(QDialog):
         r2.addWidget(QLabel("Тип:"))
         self.cbType = QComboBox(); self.cbType.setEditable(False)
         self.cbType.addItems(PG_DOC_TYPES)
+        for udt in get_udt_names(schema=self.schema):
+            self.cbType.addItem(udt)
         r2.addWidget(self.cbType, 1)
         self.chkArray = QCheckBox("[]")
         self.chkArray.setToolTip("Сделать тип массивом (добавить []), например: integer[]")
@@ -241,6 +244,8 @@ class AlterTableDialog(QDialog):
         r.addWidget(QLabel("Новый тип:"))
         self.cbNewType = QComboBox(); self.cbNewType.setEditable(False)
         self.cbNewType.addItems(PG_DOC_TYPES)
+        for udt in get_udt_names(schema=self.schema):
+            self.cbNewType.addItem(udt)
         r.addWidget(self.cbNewType, 1)
         self.chkArrayType = QCheckBox("[]")
         self.chkArrayType.setToolTip("Сделать тип массивом (добавить []), например: text[]")
@@ -429,6 +434,8 @@ class AlterTableDialog(QDialog):
             if act == "ADD COLUMN":
                 name = self.edAddName.text().strip()
                 typ = self.cbType.currentText().strip()
+                if typ not in PG_DOC_TYPES:
+                    typ = 'app.' + typ
                 if getattr(self, "chkArray", None) and self.chkArray.isChecked():
                     typ = f"{typ}[]"
                 if not name:
@@ -460,6 +467,8 @@ class AlterTableDialog(QDialog):
             elif act == "ALTER COLUMN TYPE":
                 col = self.cbAlterTypeCol.currentText().strip()
                 newt = self.cbNewType.currentText().strip()
+                if newt not in PG_DOC_TYPES:
+                    newt = 'app.'+newt
                 if getattr(self, "chkArrayType", None) and self.chkArrayType.isChecked():
                     newt = f"{newt}[]"
                 if not col:
@@ -479,6 +488,10 @@ class AlterTableDialog(QDialog):
                 else:
                     # прочие случаи: пробуем явный каст (безопаснее, чем полагаться на автокаст)
                     using = f' USING "{col}"::{newt}'
+                    
+                drop_def_sql = f'ALTER TABLE {s}."{t}" ALTER COLUMN "{col}" DROP DEFAULT'
+                stmts.append((drop_def_sql, ()))
+
                 stmt = f'ALTER TABLE {full} ALTER COLUMN "{col}" TYPE {newt}{using}'
                 stmts.append((stmt, ()))
 
