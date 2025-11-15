@@ -2,9 +2,8 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QLineEdit, QPushButton, QMessageBox, QCheckBox, QStackedWidget, QWidget
 )
+from user_types_dialog import get_udt_names
 from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QRegularExpression
-from PyQt5.QtGui import QRegularExpressionValidator
 import db
 
 ACTIONS = [
@@ -53,6 +52,7 @@ PG_DOC_TYPES = [
     "oid", "pg_lsn", "txid_snapshot"
 ]
 
+
 class AlterTableDialog(QDialog):
     def __init__(self, parent=None, schema="app"):
         super().__init__(parent)
@@ -70,9 +70,8 @@ class AlterTableDialog(QDialog):
             }
             QLabel {
                 color: white;
-                font-size: 23px;
+                font-size: 13px;
                 padding: 8px;
-                font-weight: bold;
             }
            QComboBox {
                 background-color: rgba(25, 45, 60, 200);
@@ -102,7 +101,7 @@ class AlterTableDialog(QDialog):
                 color: white;
                 border: 1px solid rgba(46, 82, 110, 255);
                 selection-background-color: rgba(2, 65, 118, 255);
-                font-size: 24px;
+                font-size: 14px;
                 padding: 12px;
                 outline: none;
             }
@@ -116,23 +115,20 @@ class AlterTableDialog(QDialog):
                 border: 1px solid rgba(46, 82, 110, 255);
                 border-radius: 4px;
                 padding: 10px;
-                font-size: 23px;
+                font-size: 13px;
                 min-height: 20px;
-                font-weight: bold;
             }
             QLineEdit:focus {
                 border: 1px solid rgba(66, 122, 160, 255);
             }
             QLineEdit::placeholder {
                 color: rgba(200, 200, 200, 150);
-                font-size: 23px;
-                font-weight: bold;
+                font-size: 12px;
             }
             QCheckBox {
                 color: white;
-                font-size: 24px;
+                font-size: 13px;
                 spacing: 10px;
-                font-weight: bold;
             }
             QCheckBox::indicator {
                 width: 18px;
@@ -149,13 +145,12 @@ class AlterTableDialog(QDialog):
             }
             QPushButton {
                 background-color: rgba(2, 65, 118, 255);
-                color: white;
+                color: rgba(255, 255, 255, 200);
                 border-radius: 5px;
                 padding: 12px;
                 min-height: 40px;
                 min-width: 120px;
-                font-size: 24px;
-                font-weight: bold;
+                font-size: 13px;
             }
             QPushButton:hover {
                 background-color: rgba(2, 65, 118, 200);
@@ -193,7 +188,8 @@ class AlterTableDialog(QDialog):
         self.stack = QStackedWidget()
 
         # ADD COLUMN
-        w_add = QWidget(); la = QVBoxLayout(w_add)
+        w_add = QWidget();
+        la = QVBoxLayout(w_add)
         r1 = QHBoxLayout()
         r1.addWidget(QLabel("Имя столбца:"))
         self.edAddName = QLineEdit()
@@ -202,8 +198,11 @@ class AlterTableDialog(QDialog):
 
         r2 = QHBoxLayout()
         r2.addWidget(QLabel("Тип:"))
-        self.cbType = QComboBox(); self.cbType.setEditable(False)
+        self.cbType = QComboBox();
+        self.cbType.setEditable(False)
         self.cbType.addItems(PG_DOC_TYPES)
+        for udt in get_udt_names(schema=self.schema):
+            self.cbType.addItem(udt)
         r2.addWidget(self.cbType, 1)
         self.chkArray = QCheckBox("[]")
         self.chkArray.setToolTip("Сделать тип массивом (добавить []), например: integer[]")
@@ -221,7 +220,8 @@ class AlterTableDialog(QDialog):
         self.stack.addWidget(w_add)
 
         # DROP COLUMN
-        w_drop = QWidget(); ld = QVBoxLayout(w_drop)
+        w_drop = QWidget();
+        ld = QVBoxLayout(w_drop)
         r = QHBoxLayout()
         r.addWidget(QLabel("Столбец:"))
         self.cbDropCol = QComboBox()
@@ -230,24 +230,35 @@ class AlterTableDialog(QDialog):
         self.stack.addWidget(w_drop)
 
         # RENAME COLUMN
-        w_ren = QWidget(); lr = QVBoxLayout(w_ren)
+        w_ren = QWidget();
+        lr = QVBoxLayout(w_ren)
         r = QHBoxLayout()
-        r.addWidget(QLabel("Столбец:")); self.cbRenCol = QComboBox(); r.addWidget(self.cbRenCol, 1)
+        r.addWidget(QLabel("Столбец:"));
+        self.cbRenCol = QComboBox();
+        r.addWidget(self.cbRenCol, 1)
         lr.addLayout(r)
         r = QHBoxLayout()
-        r.addWidget(QLabel("Новое имя:")); self.edNewName = QLineEdit(); r.addWidget(self.edNewName, 1)
+        r.addWidget(QLabel("Новое имя:"));
+        self.edNewName = QLineEdit();
+        r.addWidget(self.edNewName, 1)
         lr.addLayout(r)
         self.stack.addWidget(w_ren)
 
         # ALTER COLUMN TYPE
-        w_altertype = QWidget(); lat = QVBoxLayout(w_altertype)
+        w_altertype = QWidget();
+        lat = QVBoxLayout(w_altertype)
         r = QHBoxLayout()
-        r.addWidget(QLabel("Столбец:")); self.cbAlterTypeCol = QComboBox(); r.addWidget(self.cbAlterTypeCol, 1)
+        r.addWidget(QLabel("Столбец:"));
+        self.cbAlterTypeCol = QComboBox();
+        r.addWidget(self.cbAlterTypeCol, 1)
         lat.addLayout(r)
         r = QHBoxLayout()
         r.addWidget(QLabel("Новый тип:"))
-        self.cbNewType = QComboBox(); self.cbNewType.setEditable(False)
+        self.cbNewType = QComboBox();
+        self.cbNewType.setEditable(False)
         self.cbNewType.addItems(PG_DOC_TYPES)
+        for udt in get_udt_names(schema=self.schema):
+            self.cbNewType.addItem(udt)
         r.addWidget(self.cbNewType, 1)
         self.chkArrayType = QCheckBox("[]")
         self.chkArrayType.setToolTip("Сделать тип массивом (добавить []), например: text[]")
@@ -256,46 +267,62 @@ class AlterTableDialog(QDialog):
         self.stack.addWidget(w_altertype)
 
         # SET/DROP NOT NULL
-        w_nn = QWidget(); lnn = QVBoxLayout(w_nn)
+        w_nn = QWidget();
+        lnn = QVBoxLayout(w_nn)
         r = QHBoxLayout()
-        r.addWidget(QLabel("Столбец:")); self.cbNNCol = QComboBox(); r.addWidget(self.cbNNCol, 1)
+        r.addWidget(QLabel("Столбец:"));
+        self.cbNNCol = QComboBox();
+        r.addWidget(self.cbNNCol, 1)
         lnn.addLayout(r)
         self.chkSetNN = QCheckBox("SET NOT NULL (если не отмечено — DROP NOT NULL)")
         lnn.addWidget(self.chkSetNN)
         self.stack.addWidget(w_nn)
 
         # SET/DROP DEFAULT
-        w_def = QWidget(); ldef = QVBoxLayout(w_def)
+        w_def = QWidget();
+        ldef = QVBoxLayout(w_def)
         r = QHBoxLayout()
-        r.addWidget(QLabel("Столбец:")); self.cbDefCol = QComboBox(); r.addWidget(self.cbDefCol, 1)
+        r.addWidget(QLabel("Столбец:"));
+        self.cbDefCol = QComboBox();
+        r.addWidget(self.cbDefCol, 1)
         ldef.addLayout(r)
         r = QHBoxLayout()
-        r.addWidget(QLabel("DEFAULT-выражение:")); self.edDefault = QLineEdit(); r.addWidget(self.edDefault, 1)
+        r.addWidget(QLabel("DEFAULT-выражение:"));
+        self.edDefault = QLineEdit();
+        r.addWidget(self.edDefault, 1)
         ldef.addLayout(r)
         self.chkSetDef = QCheckBox("SET DEFAULT (если не отмечено — DROP DEFAULT)")
         ldef.addWidget(self.chkSetDef)
         self.stack.addWidget(w_def)
 
         # ADD CONSTRAINT
-        w_addc = QWidget(); lac = QVBoxLayout(w_addc)
+        w_addc = QWidget();
+        lac = QVBoxLayout(w_addc)
         r = QHBoxLayout()
-        r.addWidget(QLabel("Имя:")); self.edCName = QLineEdit(); r.addWidget(self.edCName, 1)
+        r.addWidget(QLabel("Имя:"));
+        self.edCName = QLineEdit();
+        r.addWidget(self.edCName, 1)
         lac.addLayout(r)
         r = QHBoxLayout()
         r.addWidget(QLabel("Тело (например: UNIQUE(col), CHECK (...))"))
         lac.addLayout(r)
-        self.edCBody = QLineEdit(); lac.addWidget(self.edCBody)
+        self.edCBody = QLineEdit();
+        lac.addWidget(self.edCBody)
         self.stack.addWidget(w_addc)
 
         # DROP CONSTRAINT
-        w_drpc = QWidget(); ldc = QVBoxLayout(w_drpc)
+        w_drpc = QWidget();
+        ldc = QVBoxLayout(w_drpc)
         r = QHBoxLayout()
-        r.addWidget(QLabel("CONSTRAINT:")); self.cbCName = QComboBox(); r.addWidget(self.cbCName, 1)
+        r.addWidget(QLabel("CONSTRAINT:"));
+        self.cbCName = QComboBox();
+        r.addWidget(self.cbCName, 1)
         ldc.addLayout(r)
         self.stack.addWidget(w_drpc)
 
         # RENAME TABLE
-        w_rentab = QWidget(); lrt = QVBoxLayout(w_rentab)
+        w_rentab = QWidget();
+        lrt = QVBoxLayout(w_rentab)
         r = QHBoxLayout()
         r.addWidget(QLabel("Новое имя таблицы:"))
         self.edNewTableName = QLineEdit()
@@ -312,19 +339,6 @@ class AlterTableDialog(QDialog):
         # Первичная загрузка
         self._reload_columns_and_constraints()
         self._on_action_changed(self.cbAction.currentText())
-        all_line_edits = [
-            self.edAddName,
-            self.edDefaultAdd,
-            self.edNewName,
-            self.edDefault,
-            self.edCName,
-            self.edCBody,
-            self.edNewTableName
-        ]
-        for widget in all_line_edits:  # твой список QLineEdit
-            widget.setValidator(QRegularExpressionValidator(
-                QRegularExpression(r"^[^`]*$")
-            ))
 
     # Служебные методы
 
@@ -396,18 +410,21 @@ class AlterTableDialog(QDialog):
 
         # Общие комбобоксы с колонками
         for cb in (self.cbDropCol, self.cbRenCol, self.cbNNCol, self.cbDefCol):
-            cb.clear(); cb.addItems(safe_cols)
+            cb.clear();
+            cb.addItems(safe_cols)
 
         # Для ALTER TYPE
         if hasattr(self, "cbAlterTypeCol"):
-            self.cbAlterTypeCol.clear(); self.cbAlterTypeCol.addItems(safe_cols)
+            self.cbAlterTypeCol.clear();
+            self.cbAlterTypeCol.addItems(safe_cols)
 
         # Ограничения
         try:
             cons = db.list_constraint_names(self.schema, table)
         except Exception:
             cons = []
-        self.cbCName.clear(); self.cbCName.addItems(cons)
+        self.cbCName.clear();
+        self.cbCName.addItems(cons)
 
     def _on_action_changed(self, act: str):
         mapping = {
@@ -430,11 +447,16 @@ class AlterTableDialog(QDialog):
             self._restore_full_table_combo()
 
         # Сброс полей текущего действия
-        self.edAddName.clear(); self.edDefaultAdd.clear(); self.chkAddNotNull.setChecked(False)
+        self.edAddName.clear();
+        self.edDefaultAdd.clear();
+        self.chkAddNotNull.setChecked(False)
         if hasattr(self, "chkArray"): self.chkArray.setChecked(False)
-        self.edNewName.clear(); self.chkSetNN.setChecked(False)
-        self.edDefault.clear(); self.chkSetDef.setChecked(False)
-        self.edCName.clear(); self.edCBody.clear()
+        self.edNewName.clear();
+        self.chkSetNN.setChecked(False)
+        self.edDefault.clear();
+        self.chkSetDef.setChecked(False)
+        self.edCName.clear();
+        self.edCBody.clear()
         if hasattr(self, "chkArrayType"): self.chkArrayType.setChecked(False)
         if hasattr(self, "edNewTableName"): self.edNewTableName.clear()
 
@@ -449,6 +471,8 @@ class AlterTableDialog(QDialog):
             if act == "ADD COLUMN":
                 name = self.edAddName.text().strip()
                 typ = self.cbType.currentText().strip()
+                if typ not in PG_DOC_TYPES:
+                    typ = 'app.' + typ
                 if getattr(self, "chkArray", None) and self.chkArray.isChecked():
                     typ = f"{typ}[]"
                 if not name:
@@ -480,6 +504,8 @@ class AlterTableDialog(QDialog):
             elif act == "ALTER COLUMN TYPE":
                 col = self.cbAlterTypeCol.currentText().strip()
                 newt = self.cbNewType.currentText().strip()
+                if newt not in PG_DOC_TYPES:
+                    newt = 'app.' + newt
                 if getattr(self, "chkArrayType", None) and self.chkArrayType.isChecked():
                     newt = f"{newt}[]"
                 if not col:
@@ -499,6 +525,10 @@ class AlterTableDialog(QDialog):
                 else:
                     # прочие случаи: пробуем явный каст (безопаснее, чем полагаться на автокаст)
                     using = f' USING "{col}"::{newt}'
+
+                drop_def_sql = f'ALTER TABLE {s}."{t}" ALTER COLUMN "{col}" DROP DEFAULT'
+                stmts.append((drop_def_sql, ()))
+
                 stmt = f'ALTER TABLE {full} ALTER COLUMN "{col}" TYPE {newt}{using}'
                 stmts.append((stmt, ()))
 
@@ -558,22 +588,22 @@ class AlterTableDialog(QDialog):
             QMessageBox.critical(self, "Ошибка ALTER TABLE", str(e))
 
     def _get_column_sql_type(self, schema: str, table: str, column: str) -> str:
-            """
-            Возвращает человекочитаемое имя типа столбца (как format_type), например: 'text', 'integer', 'text[]'.
-            """
-            try:
-                sql = """
-                    SELECT format_type(a.atttypid, a.atttypmod) AS full_type
-                    FROM pg_attribute a
-                    JOIN pg_class c ON c.oid = a.attrelid
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    WHERE n.nspname = %s AND c.relname = %s
-                    AND a.attname = %s AND a.attnum > 0 AND NOT a.attisdropped
-                """
-                cols, rows = db.run_select(sql, (schema, table, column))
-                return rows[0][0] if rows else ""
-            except Exception:
-                return ""
-
-
-
+        """
+        Возвращает человекочитаемое имя типа столбца (как format_type), например: 'text', 'integer', 'text[]'.
+        """
+        try:
+            sql = """
+                  SELECT format_type(a.atttypid, a.atttypmod) AS full_type
+                  FROM pg_attribute a
+                           JOIN pg_class c ON c.oid = a.attrelid
+                           JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = %s \
+                    AND c.relname = %s
+                    AND a.attname = %s \
+                    AND a.attnum > 0 \
+                    AND NOT a.attisdropped \
+                  """
+            cols, rows = db.run_select(sql, (schema, table, column))
+            return rows[0][0] if rows else ""
+        except Exception:
+            return ""
