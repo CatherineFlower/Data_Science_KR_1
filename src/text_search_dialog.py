@@ -6,8 +6,6 @@ import db
 
 OPS = ["LIKE", "ILIKE", "SIMILAR TO", "NOT SIMILAR TO", "~", "~*", "!~", "!~*"]
 
-# Типы данных, которые считаются "текстовыми" для поиска
-# (проверка будет по .startswith())
 TEXT_TYPES_PREFIXES = ['text', 'varchar', 'character varying', 'char', 'character', 'citext', 'name']
 
 
@@ -229,22 +227,22 @@ class TextSearchDialog(QDialog):
         L.addLayout(hl)
 
         hl2 = QHBoxLayout()
-        self.cbColumn = QComboBox();
-        hl2.addWidget(QLabel("Столбец:"));
+        self.cbColumn = QComboBox()
+        hl2.addWidget(QLabel("Столбец:"))
         hl2.addWidget(self.cbColumn, 1)
-        self.cbOp = QComboBox();
-        self.cbOp.addItems(OPS);
+        self.cbOp = QComboBox()
+        self.cbOp.addItems(OPS)
         hl2.addWidget(self.cbOp)
-        self.edPattern = QLineEdit();
+        self.edPattern = QLineEdit()
         self.edPattern.setPlaceholderText("Шаблон")
         # Запрещаем одинарные кавычки в шаблоне, т.к. он передается как параметр %s
         self.edPattern.setValidator(QRegExpValidator(QRegExp(r"[^']*")))
         hl2.addWidget(self.edPattern, 2)
-        self.btnFind = QPushButton("Искать");
+        self.btnFind = QPushButton("Искать")
         hl2.addWidget(self.btnFind)
         L.addLayout(hl2)
 
-        self.tbl = QTableWidget();
+        self.tbl = QTableWidget()
         L.addWidget(self.tbl, 1)
         self.btnFind.clicked.connect(self._do_search)
         self._load_columns()
@@ -277,7 +275,6 @@ class TextSearchDialog(QDialog):
             QMessageBox.warning(self, "Паттерн", "Укажите шаблон");
             return
 
-        # --- Проверка типа столбца ---
         is_text_type = any(col_type.startswith(t) for t in TEXT_TYPES_PREFIXES)
         if op in OPS and not is_text_type:
             res = QMessageBox.warning(self, "Предупреждение о типе",
@@ -289,11 +286,9 @@ class TextSearchDialog(QDialog):
                                       )
             if res == QMessageBox.No:
                 return
-        # -----------------------------
 
         sql = f'SELECT * FROM {s}.{t} WHERE "{col}" {op} %s'
 
-        # Подготовка параметра для LIKE/ILIKE
         param = pat
         if op in ("LIKE", "ILIKE", "SIMILAR TO", "NOT SIMILAR TO") and "%" not in param and "_" not in param:
             param = f"%{param}%"
@@ -307,7 +302,6 @@ class TextSearchDialog(QDialog):
                 for c, v in enumerate(row):
                     self.tbl.setItem(r, c, QTableWidgetItem("" if v is None else str(v)))
         except Exception as e:
-            # --- Улучшенная обработка ошибок ---
             err_str = str(e).lower()
             if 'invalid regular expression' in err_str:
                 QMessageBox.critical(self, "Ошибка",
@@ -320,5 +314,4 @@ class TextSearchDialog(QDialog):
                                      f"Неверный синтаксис для значения.\n"
                                      f"Возможно, вы пытаетесь сравнить числовой столбец с текстом, который нельзя преобразовать в число?")
             else:
-                QMessageBox.critical(self, "Ошибка поиска", str(e))
-            # ------------------------------------
+                QMessageBox.critical(self, "Ошибка поиска", "Проверьте выбранные парамтеры и попробуйте еще раз")

@@ -41,7 +41,7 @@ class SelectBuilderDialog(QDialog):
             self._alias_validator = QRegExpValidator(QRegExp(r'^[a-zA-Z_][a-zA-Z0-9_]*$'))
             # Для полей, куда вводится SQL-код (WHERE, ORDER BY)
             # Запрещаем точку с запятой для защиты от простых инъекций.
-            self._sql_fragment_validator = QRegExpValidator(QRegExp(r'^[^`"\'/\\|]*$'))
+            self._sql_fragment_validator = QRegExpValidator(QRegExp(r'^[^"\'/\\|`=?!~+<>:;-]*$'))
             # ------------------
 
             self.setStyleSheet("""
@@ -942,7 +942,6 @@ class SelectBuilderDialog(QDialog):
         kind = self.cbSubKind.currentText()
         s2, t2 = self.cbInnerTable.currentData()
         inner_from = f"{s2}.{t2}"
-        # correlation + локальный WHERE
         corr = [self.corrList.item(i).text() for i in range(self.corrList.count())]
         inwhere = [self.inWhereList.item(i).text() for i in range(self.inWhereList.count())]
         where_parts = []
@@ -953,7 +952,6 @@ class SelectBuilderDialog(QDialog):
         inner_where = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
         if kind in ("EXISTS", "NOT EXISTS"):
             return f"{kind} (SELECT 1 FROM {inner_from} AS sq{inner_where})"
-        # ANY/ALL
         left_col = self.cbLeftCol.currentText().strip()
         op = self.cbCmpOp.currentText().strip()
         qty = self.cbQuantifier.currentText().strip()
@@ -975,7 +973,6 @@ class SelectBuilderDialog(QDialog):
     def subFilterStrings(self):
         return [self.subFilterList.item(i).text() for i in range(self.subFilterList.count())]
 
-    # === SELECT агрегаты ===
     def _add_select_agg(self):
         try:
             func = self.cbSelAggFunc.currentText().strip()
@@ -1007,7 +1004,6 @@ class SelectBuilderDialog(QDialog):
             row = self.selAggList.row(it)
             self.selAggList.takeItem(row)
 
-    # === SQL generation / run ===
     def _gen_sql(self):
         try:
             s, t = self.cbTable.currentData() or (None, None)
@@ -1015,21 +1011,16 @@ class SelectBuilderDialog(QDialog):
                 QMessageBox.warning(self, "SELECT", "Выберите таблицу.")
                 return
 
-            # Неагрегированные поля
             nonagg_cols = [i.text() for i in self.colsList.selectedItems()]
             nonagg_sql = [_id_quote(c) for c in nonagg_cols]
 
-            # Агрегаты из списка
             agg_sql = [self.selAggList.item(i).text() for i in range(self.selAggList.count())]
 
-            # Пользовательские выражения (CASE/COALESCE/NULLIF)
             expr_sql = [self.exprList.item(i).text() for i in range(self.exprList.count())]
 
-            # Если вообще ничего не выбрано - ставим *
             select_items = (nonagg_sql + agg_sql + expr_sql) if (nonagg_sql or agg_sql or expr_sql) else ["*"]
             cols_sql = ", ".join(select_items)
 
-            # WHERE: объединяем ручной и авто-подзапросы
             manual_where = self.edWhere.text().strip()
             sub_where = " AND ".join(self.subFilterStrings())
             if manual_where and sub_where:
@@ -1045,7 +1036,6 @@ class SelectBuilderDialog(QDialog):
             if where_txt:
                 parts.append("WHERE " + where_txt)
 
-            # Авто-GROUP BY
             has_aggregates = len(agg_sql) > 0
             if self.cbAutoGroup.isChecked():
                 need_group = has_aggregates or bool(having_txt)
@@ -1053,7 +1043,7 @@ class SelectBuilderDialog(QDialog):
                     if nonagg_sql:
                         group_txt = ", ".join(nonagg_sql)
                     else:
-                        group_txt = ""  # только агрегаты
+                        group_txt = ""
 
             if group_txt:
                 parts.append("GROUP BY " + group_txt)
@@ -1088,3 +1078,135 @@ class SelectBuilderDialog(QDialog):
             print("Ошибка в _run_sql:", e)
             traceback.print_exc()
 
+# --- Auto-GROUP BY patch appended ---
+
+import re
+import traceback
+
+def __new_extract_columns_from_expr(self, exprs: list, available_cols: list) -> set:
+    """
+    Extract column names from SELECT expressions.
+    - Finds quoted identifiers "name" and unquoted tokens matching available_cols (case-insensitive).
+    Returns set of canonical column names (as found in available_cols).
+    """
+    cols = set()
+    if not exprs:
+        return cols
+
+    # 1) quoted "name"
+    for expr in exprs:
+        if not expr:
+            continue
+        for m in re.finditer(r'"([^"]+)"', expr):
+            name = m.group(1)
+            cols.add(name)
+
+    # 2) unquoted token matching available columns (case-insensitive)
+    avail_lc = {c.lower(): c for c in available_cols}
+    for expr in exprs:
+        if not expr:
+            continue
+        for m in re.finditer(r'\b([A-Za-z_][A-Za-z0-9_]*)\b', expr):
+            token = m.group(1)
+            if token.upper() in ("SELECT", "FROM", "AS", "CASE", "WHEN", "THEN", "ELSE",
+                                 "END", "COALESCE", "NULLIF", "COUNT", "SUM", "AVG",
+                                 "MIN", "MAX", "AND", "OR", "IN", "BETWEEN", "NOT", "EXISTS",
+                                 "ANY", "ALL", "DISTINCT", "ON", "JOIN", "WHERE", "HAVING",
+                                 "ORDER", "BY", "GROUP", "TRUE", "FALSE", "NULL"):
+                continue
+            if token.lower() in avail_lc:
+                cols.add(avail_lc[token.lower()])
+    return cols
+
+def __new_gen_sql(self):
+    try:
+        s, t = self.cbTable.currentData() or (None, None)
+        if s is None:
+            QMessageBox.warning(self, "SELECT", "Выберите таблицу.")
+            return
+
+        # non-aggregated explicitly selected columns (from UI)
+        nonagg_cols = [i.text() for i in self.colsList.selectedItems()]  # plain names
+        nonagg_sql = [_id_quote(c) for c in nonagg_cols]
+
+        # aggregate expressions (как строки), e.g. SUM("col") AS "alias"
+        agg_sql = [self.selAggList.item(i).text() for i in range(self.selAggList.count())]
+
+        # other expressions (CASE/COALESCE/NULLIF/... )
+        expr_sql = [self.exprList.item(i).text() for i in range(self.exprList.count())]
+
+        select_items = (nonagg_sql + agg_sql + expr_sql) if (nonagg_sql or agg_sql or expr_sql) else ["*"]
+        cols_sql = ", ".join(select_items)
+
+        manual_where = self.edWhere.text().strip()
+        sub_where = " AND ".join(self.subFilterStrings())
+        if manual_where and sub_where:
+            where_txt = f"({manual_where}) AND ({sub_where})"
+        else:
+            where_txt = manual_where or sub_where
+
+        group_txt = self.edGroup.text().strip()
+        having_txt = self.edHaving.text().strip()
+        order_txt = self.edOrder.text().strip()
+
+        parts = [f"SELECT {cols_sql} FROM {s}.{t}"]
+        if where_txt:
+            parts.append("WHERE " + where_txt)
+
+        has_aggregates = len(agg_sql) > 0
+        if self.cbAutoGroup.isChecked():
+            need_group = has_aggregates or bool(having_txt)
+            if need_group and not group_txt:
+                # Получим все доступные имена колонок таблицы (оригинальные имена)
+                try:
+                    available_cols = [c["column_name"] for c in db.list_columns(s, t)]
+                except Exception:
+                    # fallback: try attribute or empty
+                    try:
+                        available_cols = [c.name for c in db.list_columns(s, t)]
+                    except Exception:
+                        available_cols = []
+
+                # 1) Извлечь колонки, используемые в выражениях SELECT (включая expr_sql и agg_sql)
+                select_expr_strings = []
+                select_expr_strings += nonagg_sql
+                select_expr_strings += agg_sql
+                select_expr_strings += expr_sql
+
+                used_cols = __new_extract_columns_from_expr(self, select_expr_strings, available_cols)
+
+                # 2) Выделим колонки, которые используются внутри агрегатов — их в GROUP BY не добавляем
+                agg_cols = set()
+                if agg_sql:
+                    agg_cols = __new_extract_columns_from_expr(self, agg_sql, available_cols)
+
+                # 3) Составим итоговый набор колонок для GROUP BY:
+                final_cols = set(nonagg_cols) | (used_cols - agg_cols)
+
+                final_cols = [c for c in final_cols if c]
+
+                if final_cols:
+                    group_txt = ", ".join([_id_quote(c) for c in final_cols])
+                else:
+                    group_txt = ""
+
+        if group_txt:
+            parts.append("GROUP BY " + group_txt)
+        if having_txt:
+            parts.append("HAVING " + having_txt)
+        if order_txt:
+            parts.append("ORDER BY " + order_txt)
+
+        self.sqlView.setPlainText("\n".join(parts))
+    except Exception as e:
+        print("Ошибка в _gen_sql (patched):", e)
+        traceback.print_exc()
+
+
+# Bind patched functions into SelectBuilderDialog class if it exists
+try:
+    SelectBuilderDialog._extract_columns_from_expr = __new_extract_columns_from_expr
+    SelectBuilderDialog._gen_sql = __new_gen_sql
+except Exception:
+    # If class is not defined at import-time, we'll attempt binding lazily when module is imported
+    pass

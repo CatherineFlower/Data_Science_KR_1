@@ -129,12 +129,12 @@ class UserTypesDialog(QDialog):
         # --- Валидаторы ---
         # Для имен, которые код будет заключать в двойные кавычки (f'"{name}"')
         # Запрещаем только сами двойные кавычки.
-        self._name_validator =  QRegExpValidator(QRegExp(r'^[a-zA-Z_][a-zA-Z0-9_]*$'))
+        self._name_validator =  QRegExpValidator(QRegExp(r'^[^"\'/\\|`=?!~+<>:;-]*$'))
         # Для значений, которые пользователь вводит без кавычек (e.g. 'draft', а не "'draft'")
         # Запрещаем одинарные кавычки, т.к. они сломают SQL или парсинг
-        self._value_validator =  QRegExpValidator(QRegExp(r'^[a-zA-Z_][a-zA-Z0-9_]*$'))
+        self._value_validator =  QRegExpValidator(QRegExp(r'^[^"\'/\\|`=?!~+<>:;-]*$'))
         # Для списков значений (запрещаем одинарные кавычки)
-        self._value_list_validator =  QRegExpValidator(QRegExp(r'^[a-zA-Z_][a-zA-Z0-9_]*$'))
+        self._value_list_validator =  QRegExpValidator(QRegExp(r'^[^"\'/\\|`=?!~+<>:;-]*$'))
         # --------------------
 
         self._current_oid: int | None = None
@@ -945,7 +945,6 @@ class _AttrEditor(QDialog):
         if name_validator:
             self.name.setValidator(name_validator)  # <-- Валидация
 
-        form.addRow("Имя:", self.name)
         if allow_type:
             form.addRow("Тип:", self.typ)  # Тип не валидируем, т.к. он может быть сложным (varchar(100), text[], etc.)
         L.addLayout(form)
