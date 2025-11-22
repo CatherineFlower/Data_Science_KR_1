@@ -8,10 +8,6 @@ from alter_table_dialog import AlterTableDialog
 from select_builder_dialog import SelectBuilderDialog
 from string_funcs_dialog import StringFuncsDialog
 from join_wizard_dialog import JoinWizardDialog
-from advanced_grouping_dialog import AdvancedGroupingDialog
-from views_manager_dialog import ViewsManagerDialog
-from materialized_views_dialog import MaterializedViewsDialog
-from cte_builder_dialog import CTEBuilderDialog
 
 
 class AdminDesignWindow(QMainWindow):
@@ -47,8 +43,6 @@ class AdminDesignWindow(QMainWindow):
         # Устанавливаем шрифт для всех кнопок
         for button in [
             self.ui.createSchemaButton, self.ui.deleteSchemaButton, self.ui.btnAlterTable, self.ui.btnSelect,
-            self.ui.btnStringFunc, self.ui.btnMasterJoin, self.ui.btnAdvGrouping, self.ui.btnViews,
-            self.ui.btnMatViews, self.ui.btnCTE, self.ui.btnBackMain
         ]:
             button.setFont(button_font)
 
@@ -63,10 +57,6 @@ class AdminDesignWindow(QMainWindow):
         self.ui.btnSelect.clicked.connect(lambda: SelectBuilderDialog(self, schema="app").exec_())
         self.ui.btnStringFunc.clicked.connect(lambda: StringFuncsDialog(self, schema="app").exec_())
         self.ui.btnMasterJoin.clicked.connect(lambda: JoinWizardDialog(self, schema="app").exec_())
-        self.ui.btnAdvGrouping.clicked.connect(lambda: AdvancedGroupingDialog(self, schema="app").exec_())
-        self.ui.btnViews.clicked.connect(lambda: ViewsManagerDialog(self, schema="app").exec_())
-        self.ui.btnMatViews.clicked.connect(lambda: MaterializedViewsDialog(self, schema="app").exec_())
-        self.ui.btnCTE.clicked.connect(lambda: CTEBuilderDialog(self, schema="app").exec_())
         self.ui.btnBackMain.clicked.connect(self.do_back)
 
     def show(self):
