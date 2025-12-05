@@ -1,4 +1,17 @@
 import sys
+import os
+
+# Установка пути к плагинам Qt для Windows
+if sys.platform == 'win32':
+    try:
+        import PyQt5
+        qt5_path = os.path.dirname(PyQt5.__file__)
+        plugins_path = os.path.join(qt5_path, 'Qt5', 'plugins')
+        if os.path.exists(plugins_path):
+            os.environ['QT_PLUGIN_PATH'] = plugins_path
+    except ImportError:
+        pass
+
 from Application import Application
 from LoginWindow import LoginWindow
 

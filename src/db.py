@@ -575,3 +575,342 @@ def list_fk_pairs(schema: str, left_table: str, right_table: str) -> list[tuple[
     """
     cols, rows = run_select(sql, (schema, left_table, schema, right_table, schema, left_table, schema, right_table))
     return [(l, r) for l, r in rows]
+
+# ==================== Представления (VIEW и MATERIALIZED VIEW) ====================
+# Блок функций для работы с обычными представлениями (VIEW) и материализованными (MATERIALIZED VIEW)
+# Все функции используют параметризованные запросы для безопасности
+
+def list_views(schema: str = "app", materialized: bool = False):
+    """
+    Получить список представлений в указанной схеме.
+    
+    Для обычных VIEW использует information_schema.views (стандартный способ).
+    Для MATERIALIZED VIEW использует pg_class, т.к. они хранятся как таблицы (relkind='m').
+    
+    Args:
+        schema: имя схемы БД (по умолчанию "app")
+        materialized: если True - возвращает MATERIALIZED VIEW, иначе обычные VIEW
+    
+    Returns:
+        Список словарей с информацией о представлениях:
+        - view_name: имя представления
+        - size: размер в читаемом формате (только для MATERIALIZED VIEW)
+        - comment: комментарий к представлению (если есть)
+    """
+    if materialized:
+        # Запрос для MATERIALIZED VIEW через системные таблицы PostgreSQL
+        # pg_class содержит информацию о всех объектах БД (таблицы, индексы, VIEW и т.д.)
+        # relkind='m' означает материализованное представление
+        # pg_total_relation_size возвращает размер включая индексы
+        # pg_size_pretty форматирует размер в читаемый вид (KB, MB, GB)
+        sql = """
+        SELECT c.relname AS view_name,
+               pg_size_pretty(pg_total_relation_size(c.oid)) AS size,
+               obj_description(c.oid, 'pg_class') AS comment
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s
+          AND c.relkind = 'm'  -- 'm' = materialized view
+        ORDER BY c.relname
+        """
+    else:
+        # Запрос для обычных VIEW через стандартный information_schema
+        # information_schema.views содержит только обычные VIEW, не материализованные
+        sql = """
+        SELECT table_name AS view_name,
+               NULL AS size,
+               NULL AS comment
+        FROM information_schema.views
+        WHERE table_schema = %s
+        ORDER BY table_name
+        """
+    # Выполняем запрос и преобразуем результат в список словарей
+    cols, rows = run_select(sql, (schema,))
+    return [dict(zip(cols, r)) for r in rows]
+
+def list_all_views(schema: str = "app"):
+    """
+    Получить объединенный список всех представлений (обычных и материализованных).
+    
+    Удобная функция для отображения всех представлений в одном списке с пометкой типа.
+    
+    Args:
+        schema: имя схемы БД (по умолчанию "app")
+    
+    Returns:
+        Список словарей со всеми представлениями, каждый содержит:
+        - view_name: имя представления
+        - is_materialized: True для MATERIALIZED VIEW, False для обычных
+        - size: размер (только для MATERIALIZED VIEW)
+        - comment: комментарий (если есть)
+    """
+    # Получаем отдельно обычные и материализованные представления
+    regular = list_views(schema, materialized=False)
+    materialized = list_views(schema, materialized=True)
+    
+    # Добавляем флаг типа для каждого представления
+    # Это позволяет в GUI различать типы представлений
+    for v in regular:
+        v['is_materialized'] = False
+    for v in materialized:
+        v['is_materialized'] = True
+    
+    # Объединяем списки и возвращаем
+    return regular + materialized
+
+def get_view_definition(schema: str, view_name: str, materialized: bool = False):
+    """
+    Получить SQL определение (исходный запрос) представления.
+    
+    Для обычных VIEW используется information_schema.views.view_definition.
+    Для MATERIALIZED VIEW используется функция pg_get_viewdef().
+    
+    Args:
+        schema: имя схемы БД
+        view_name: имя представления
+        materialized: True для MATERIALIZED VIEW, False для обычного VIEW
+    
+    Returns:
+        Строка с SQL определением представления или None, если не найдено
+    """
+    if materialized:
+        # Для MATERIALIZED VIEW используем функцию pg_get_viewdef()
+        # regclass - это тип PostgreSQL для идентификаторов объектов БД
+        # true - означает "красивое форматирование" (с отступами)
+        sql = """
+        SELECT pg_get_viewdef(%s::regclass, true) AS definition
+        """
+        # Формируем полное имя объекта (схема.имя) для regclass
+        view_qualified = f"{schema}.{view_name}"
+        # Используем прямой вызов, т.к. pg_get_viewdef требует специальный синтаксис
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (view_qualified,))
+                row = cur.fetchone()
+        if row:
+            return row[0]
+        return None
+    else:
+        # Для обычных VIEW используем стандартный information_schema
+        sql = """
+        SELECT view_definition AS definition
+        FROM information_schema.views
+        WHERE table_schema = %s AND table_name = %s
+        """
+        cols, rows = run_select(sql, (schema, view_name))
+        if rows:
+            return rows[0][0]
+        return None
+
+def create_view(schema: str, view_name: str, definition: str, materialized: bool = False, with_data: bool = True):
+    """
+    Создать новое представление (обычное или материализованное).
+    
+    Выполняет DDL операцию CREATE VIEW или CREATE MATERIALIZED VIEW.
+    Валидирует имя представления на безопасность (только буквы, цифры, подчеркивания).
+    
+    Args:
+        schema: имя схемы БД
+        view_name: имя представления (валидируется)
+        definition: SQL запрос SELECT, который определяет представление
+        materialized: True для MATERIALIZED VIEW, False для обычного VIEW
+        with_data: для MATERIALIZED VIEW - загружать данные сразу (True) или создать пустым (False)
+    
+    Raises:
+        ValueError: если имя представления содержит недопустимые символы
+        Exception: если SQL определение некорректно или представление уже существует
+    """
+    # Валидация имени представления для безопасности
+    # Разрешаем только буквы (латиница), цифры и подчеркивания
+    # Имя должно начинаться с буквы или подчеркивания
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', view_name):
+        raise ValueError(f"Некорректное имя представления: {view_name}")
+    
+    # Определяем тип создаваемого объекта
+    view_type = "MATERIALIZED VIEW" if materialized else "VIEW"
+    
+    # Для MATERIALIZED VIEW можно указать WITH DATA или WITH NO DATA
+    # WITH DATA - сразу загружает данные (по умолчанию)
+    # WITH NO DATA - создает пустое представление (данные загрузятся при первом REFRESH)
+    data_clause = ""
+    if materialized:
+        data_clause = "WITH DATA" if with_data else "WITH NO DATA"
+    
+    # Формируем SQL команду создания представления
+    # ВАЖНО: definition не экранируется, т.к. это SQL код, который должен быть валидным
+    # Валидация definition должна выполняться на уровне GUI или через EXPLAIN
+    sql = f"CREATE {view_type} {schema}.{view_name} AS {definition} {data_clause}"
+    
+    # Выполняем DDL операцию в транзакции
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Логируем операцию, если включено логирование SQL
+            if DB_LOG_SQL_PREVIEW:
+                preview = " ".join(sql.split())[:180]
+                logger.info("DDL: CREATE %s %s.%s", view_type, schema, view_name)
+            # Выполняем создание представления
+            cur.execute(sql)
+        # Коммитим транзакцию
+        conn.commit()
+    # Логируем успешное создание
+    logger.info("Created %s %s.%s", view_type, schema, view_name)
+
+def drop_view(schema: str, view_name: str, materialized: bool = False, cascade: bool = False):
+    """
+    Удалить представление из базы данных.
+    
+    Использует IF EXISTS для безопасного удаления (не вызовет ошибку, если представления нет).
+    CASCADE удаляет зависимые объекты (например, другие VIEW, которые используют это представление).
+    
+    Args:
+        schema: имя схемы БД
+        view_name: имя представления для удаления
+        materialized: True для MATERIALIZED VIEW, False для обычного VIEW
+        cascade: если True, удаляет зависимые объекты автоматически
+    """
+    # Определяем тип удаляемого объекта
+    view_type = "MATERIALIZED VIEW" if materialized else "VIEW"
+    
+    # CASCADE удаляет все объекты, зависящие от этого представления
+    # Без CASCADE удаление не удастся, если есть зависимости
+    cascade_clause = "CASCADE" if cascade else ""
+    
+    # Формируем SQL команду удаления
+    # IF EXISTS предотвращает ошибку, если представление уже удалено
+    sql = f"DROP {view_type} IF EXISTS {schema}.{view_name} {cascade_clause}"
+    
+    # Выполняем DDL операцию
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Логируем операцию
+            if DB_LOG_SQL_PREVIEW:
+                logger.info("DDL: DROP %s %s.%s", view_type, schema, view_name)
+            cur.execute(sql)
+        conn.commit()
+    # Логируем успешное удаление
+    logger.info("Dropped %s %s.%s", view_type, schema, view_name)
+
+def refresh_materialized_view(schema: str, view_name: str, concurrently: bool = False):
+    """
+    Обновить данные в материализованном представлении.
+    
+    MATERIALIZED VIEW хранит данные физически, поэтому их нужно периодически обновлять.
+    Обычный REFRESH блокирует представление на время обновления.
+    CONCURRENTLY позволяет читать данные во время обновления, но требует уникальный индекс.
+    
+    Args:
+        schema: имя схемы БД
+        view_name: имя MATERIALIZED VIEW для обновления
+        concurrently: если True, использует CONCURRENTLY (не блокирует чтение, но медленнее)
+    
+    Raises:
+        Exception: если CONCURRENTLY используется без уникального индекса или представление не найдено
+    """
+    # CONCURRENTLY позволяет читать данные во время обновления
+    # Но требует наличие хотя бы одного уникального индекса на представлении
+    concurrently_clause = "CONCURRENTLY" if concurrently else ""
+    
+    # Формируем SQL команду обновления
+    sql = f"REFRESH MATERIALIZED VIEW {concurrently_clause} {schema}.{view_name}"
+    
+    # Выполняем обновление
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if DB_LOG_SQL_PREVIEW:
+                logger.info("DDL: REFRESH MATERIALIZED VIEW %s %s.%s", concurrently_clause, schema, view_name)
+            try:
+                cur.execute(sql)
+            except Exception as e:
+                # Обрабатываем специфичную ошибку CONCURRENTLY
+                # Если используется CONCURRENTLY без индекса, PostgreSQL вернет понятную ошибку
+                if concurrently and 'concurrently' in str(e).lower():
+                    raise Exception("CONCURRENTLY refresh требует уникальный индекс на материализованном представлении") from e
+                # Пробрасываем другие ошибки дальше
+                raise
+        conn.commit()
+    # Логируем успешное обновление
+    logger.info("Refreshed MATERIALIZED VIEW %s.%s", schema, view_name)
+
+def view_exists(schema: str, view_name: str, materialized: bool = False) -> bool:
+    """
+    Проверить, существует ли представление в базе данных.
+    
+    Используется для валидации перед операциями создания/удаления.
+    
+    Args:
+        schema: имя схемы БД
+        view_name: имя представления для проверки
+        materialized: True для MATERIALIZED VIEW, False для обычного VIEW
+    
+    Returns:
+        True если представление существует, False иначе
+    """
+    if materialized:
+        # Для MATERIALIZED VIEW проверяем через pg_class
+        # relkind='m' означает материализованное представление
+        sql = """
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s
+          AND c.relname = %s
+          AND c.relkind = 'm'
+        """
+    else:
+        # Для обычных VIEW используем information_schema
+        sql = """
+        SELECT 1
+        FROM information_schema.views
+        WHERE table_schema = %s AND table_name = %s
+        """
+    # Выполняем запрос и проверяем наличие результата
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (schema, view_name))
+            # Если fetchone() вернул строку - представление существует
+            return cur.fetchone() is not None
+
+def get_materialized_view_info(schema: str, view_name: str):
+    """
+    Получить детальную информацию о материализованном представлении.
+    
+    Возвращает размеры, комментарии и количество индексов для отображения в GUI.
+    
+    Args:
+        schema: имя схемы БД
+        view_name: имя MATERIALIZED VIEW
+    
+    Returns:
+        Словарь с информацией:
+        - view_name: имя представления
+        - total_size: общий размер (данные + индексы) в читаемом формате
+        - table_size: размер только данных (без индексов) в читаемом формате
+        - comment: комментарий к представлению (если есть)
+        - index_count: количество индексов на представлении
+        Или None, если представление не найдено
+    """
+    # Запрос собирает информацию из системных таблиц PostgreSQL
+    # pg_total_relation_size - размер включая индексы и TOAST
+    # pg_relation_size - размер только таблицы данных
+    # pg_size_pretty - форматирует байты в читаемый вид (KB, MB, GB)
+    # obj_description - получает комментарий к объекту
+    # Подзапрос считает количество индексов для CONCURRENTLY refresh
+    sql = """
+    SELECT 
+        c.relname AS view_name,
+        pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+        pg_size_pretty(pg_relation_size(c.oid)) AS table_size,
+        obj_description(c.oid, 'pg_class') AS comment,
+        (SELECT COUNT(*) FROM pg_indexes WHERE schemaname = %s AND tablename = %s) AS index_count
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s
+      AND c.relname = %s
+      AND c.relkind = 'm'  -- 'm' = materialized view
+    """
+    # Выполняем запрос с параметрами (schema, view_name используются дважды)
+    cols, rows = run_select(sql, (schema, view_name, schema, view_name))
+    if rows:
+        # Преобразуем результат в словарь для удобства использования
+        return dict(zip(cols, rows[0]))
+    return None

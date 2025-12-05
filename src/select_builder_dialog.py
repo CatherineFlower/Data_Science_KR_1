@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QListWidget, QListWidgetItem, QLineEdit, QTextEdit,
                              QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
-                             QCheckBox)
+                             QCheckBox, QGroupBox)
 from PyQt5.QtCore import Qt
 import re
 import db
@@ -287,6 +287,45 @@ class SelectBuilderDialog(QDialog):
         self.cbAutoGroup.setChecked(True)
         L.addWidget(self.cbAutoGroup)
 
+        # Расширенная группировка: ROLLUP, CUBE, GROUPING SETS
+        group_box = QGroupBox("Расширенная группировка данных")
+        group_layout = QVBoxLayout()
+        
+        # Выбор типа группировки
+        type_row = QHBoxLayout()
+        type_row.addWidget(QLabel("Тип группировки:"))
+        self.cbGroupType = QComboBox()
+        self.cbGroupType.addItems(["Обычный GROUP BY", "ROLLUP", "CUBE", "GROUPING SETS"])
+        self.cbGroupType.currentIndexChanged.connect(self._on_group_type_changed)
+        type_row.addWidget(self.cbGroupType, 1)
+        group_layout.addLayout(type_row)
+        
+        # Для GROUPING SETS - список множеств столбцов
+        self.groupingSetsLabel = QLabel("GROUPING SETS - множества столбцов (каждое множество на отдельной строке):")
+        self.groupingSetsLabel.setVisible(False)
+        group_layout.addWidget(self.groupingSetsLabel)
+        
+        self.groupingSetsList = QListWidget()
+        self.groupingSetsList.setVisible(False)
+        self.groupingSetsList.setMaximumHeight(150)
+        group_layout.addWidget(self.groupingSetsList)
+        
+        # Кнопки для управления GROUPING SETS
+        sets_buttons_row = QHBoxLayout()
+        self.btnAddGroupingSet = QPushButton("Добавить множество")
+        self.btnAddGroupingSet.setVisible(False)
+        self.btnAddGroupingSet.clicked.connect(self._add_grouping_set)
+        self.btnDelGroupingSet = QPushButton("Удалить выбранное")
+        self.btnDelGroupingSet.setVisible(False)
+        self.btnDelGroupingSet.clicked.connect(self._del_grouping_set)
+        sets_buttons_row.addWidget(self.btnAddGroupingSet)
+        sets_buttons_row.addWidget(self.btnDelGroupingSet)
+        sets_buttons_row.addStretch()
+        group_layout.addLayout(sets_buttons_row)
+        
+        group_box.setLayout(group_layout)
+        L.addWidget(group_box)
+
         # HAVING — конструктор
         L.addWidget(QLabel("HAVING — конструктор"))
         row1 = QHBoxLayout()
@@ -326,7 +365,7 @@ class SelectBuilderDialog(QDialog):
         self.cbSelAggFunc.currentIndexChanged.connect(self._on_select_agg_func_change)
 
         self._load_columns()
-        for lst in (self.colsList, self.selAggList, self.havingList):
+        for lst in (self.colsList, self.selAggList, self.havingList, self.groupingSetsList):
             lst.setFocusPolicy(Qt.NoFocus)
 
     # UI helpers 
@@ -338,6 +377,78 @@ class SelectBuilderDialog(QDialog):
         func = self.cbSelAggFunc.currentText()
         # Для COUNT разрешаем "*"
         pass
+
+    # Обработчики для расширенной группировки
+    def _on_group_type_changed(self):
+        """Показать/скрыть элементы интерфейса в зависимости от выбранного типа группировки"""
+        group_type = self.cbGroupType.currentText()
+        is_grouping_sets = (group_type == "GROUPING SETS")
+        
+        # Показываем/скрываем элементы для GROUPING SETS
+        self.groupingSetsLabel.setVisible(is_grouping_sets)
+        self.groupingSetsList.setVisible(is_grouping_sets)
+        self.btnAddGroupingSet.setVisible(is_grouping_sets)
+        self.btnDelGroupingSet.setVisible(is_grouping_sets)
+    
+    def _add_grouping_set(self):
+        """Добавить новое множество столбцов для GROUPING SETS"""
+        # Получаем список всех столбцов таблицы
+        s, t = self.cbTable.currentData()
+        columns = db.list_columns(s, t)
+        col_names = [c["column_name"] for c in columns]
+        
+        if not col_names:
+            QMessageBox.warning(self, "GROUPING SETS", "Нет доступных столбцов")
+            return
+        
+        # Создаем диалог для выбора столбцов множества
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Добавить множество для GROUPING SETS")
+        dialog.setMinimumSize(400, 300)
+        dialog.setStyleSheet(self.styleSheet())
+        
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Выберите столбцы для множества:"))
+        
+        # Список столбцов с множественным выбором
+        cols_list = QListWidget()
+        cols_list.setSelectionMode(cols_list.MultiSelection)
+        for col in col_names:
+            item = QListWidgetItem(col)
+            cols_list.addItem(item)
+        layout.addWidget(cols_list)
+        
+        # Кнопки
+        buttons_layout = QHBoxLayout()
+        btn_ok = QPushButton("Добавить")
+        btn_cancel = QPushButton("Отмена")
+        buttons_layout.addWidget(btn_ok)
+        buttons_layout.addWidget(btn_cancel)
+        layout.addLayout(buttons_layout)
+        
+        selected_cols = []
+        def on_ok():
+            nonlocal selected_cols
+            selected_items = cols_list.selectedItems()
+            if not selected_items:
+                QMessageBox.warning(dialog, "Ошибка", "Выберите хотя бы один столбец")
+                return
+            selected_cols = [_id_quote(item.text()) for item in selected_items]
+            dialog.accept()
+        
+        btn_ok.clicked.connect(on_ok)
+        btn_cancel.clicked.connect(dialog.reject)
+        
+        if dialog.exec_() == QDialog.Accepted and selected_cols:
+            # Добавляем множество в список
+            set_text = "(" + ", ".join(selected_cols) + ")"
+            self.groupingSetsList.addItem(set_text)
+    
+    def _del_grouping_set(self):
+        """Удалить выбранное множество из GROUPING SETS"""
+        for item in self.groupingSetsList.selectedItems():
+            row = self.groupingSetsList.row(item)
+            self.groupingSetsList.takeItem(row)
 
     def _load_columns(self):
         self.colsList.clear()
@@ -472,8 +583,37 @@ class SelectBuilderDialog(QDialog):
                 else:
                     group_txt = ""  # только агрегаты
 
-        if group_txt:
-            parts.append("GROUP BY " + group_txt)
+        # Генерация GROUP BY с учетом расширенной группировки
+        group_type = self.cbGroupType.currentText()
+        
+        if group_txt or group_type != "Обычный GROUP BY":
+            if group_type == "Обычный GROUP BY":
+                # Обычный GROUP BY - просто перечисление столбцов
+                if group_txt:
+                    parts.append("GROUP BY " + group_txt)
+            elif group_type == "ROLLUP":
+                # ROLLUP создает иерархические итоги
+                # GROUP BY ROLLUP (col1, col2) создает группы: (col1, col2), (col1), ()
+                if not group_txt:
+                    QMessageBox.warning(self, "ROLLUP", "Для ROLLUP нужно выбрать столбцы для группировки")
+                else:
+                    parts.append(f"GROUP BY ROLLUP ({group_txt})")
+            elif group_type == "CUBE":
+                # CUBE создает все возможные комбинации группировок
+                # GROUP BY CUBE (col1, col2) создает: (col1, col2), (col1), (col2), ()
+                if not group_txt:
+                    QMessageBox.warning(self, "CUBE", "Для CUBE нужно выбрать столбцы для группировки")
+                else:
+                    parts.append(f"GROUP BY CUBE ({group_txt})")
+            elif group_type == "GROUPING SETS":
+                # GROUPING SETS позволяет указать конкретные множества для группировки
+                # GROUP BY GROUPING SETS ((col1), (col2, col3)) создает группы только для указанных комбинаций
+                sets_items = [self.groupingSetsList.item(i).text() for i in range(self.groupingSetsList.count())]
+                if not sets_items:
+                    QMessageBox.warning(self, "GROUPING SETS", "Добавьте хотя бы одно множество столбцов")
+                else:
+                    sets_sql = ", ".join(sets_items)
+                    parts.append(f"GROUP BY GROUPING SETS ({sets_sql})")
         if having_txt:
             parts.append("HAVING " + having_txt)
         if order_txt:
