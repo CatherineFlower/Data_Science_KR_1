@@ -10,6 +10,7 @@ from string_funcs_dialog import StringFuncsDialog
 from join_wizard_dialog import JoinWizardDialog
 from user_types_dialog import UserTypesDialog
 from text_search_dialog import TextSearchDialog
+from views_manager_dialog import ViewsManagerDialog
 
 
 class AdminDesignWindow(QMainWindow):
@@ -44,7 +45,8 @@ class AdminDesignWindow(QMainWindow):
 
         # Устанавливаем шрифт для всех кнопок
         for button in [
-            self.ui.createSchemaButton, self.ui.deleteSchemaButton, self.ui.btnAlterTable, self.ui.btnSelect, self.ui.btnUserTypes, self.ui.btnTextSearch
+            self.ui.createSchemaButton, self.ui.deleteSchemaButton, self.ui.btnAlterTable, self.ui.btnSelect, self.ui.btnUserTypes, self.ui.btnTextSearch,
+            self.ui.btnManager
         ]:
             button.setFont(button_font)
 
@@ -61,6 +63,7 @@ class AdminDesignWindow(QMainWindow):
         self.ui.btnMasterJoin.clicked.connect(lambda: JoinWizardDialog(self, schema="app").exec_())
         self.ui.btnUserTypes.clicked.connect(lambda: UserTypesDialog(parent=self, schema="app").exec_())
         self.ui.btnTextSearch.clicked.connect(lambda: TextSearchDialog(parent=self, schema="app").exec_())
+        self.ui.btnManager.clicked.connect(lambda: ViewsManagerDialog(parent=self, schema="app").exec_())
         self.ui.btnBackMain.clicked.connect(self.do_back)
 
     def show(self):
