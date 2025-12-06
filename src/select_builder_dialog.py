@@ -2,995 +2,988 @@ import traceback
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QListWidget, QListWidgetItem, QLineEdit, QTextEdit,
                              QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
-                             QCheckBox, QTabWidget, QWidget)
-from PyQt5.QtCore import Qt
+                             QCheckBox, QTabWidget, QWidget, QInputDialog, QGroupBox)
+from PyQt5.QtCore import Qt, QRegExp
+from PyQt5.QtGui import QRegExpValidator
 import re
 import db
 
 _AGG_FUNCS = ["COUNT", "SUM", "AVG", "MIN", "MAX"]
 _CMP_OPS_WITH_VALUE = [">=", ">", "=", "<=", "<", "<>", "BETWEEN", "NOT BETWEEN", "IN", "NOT IN"]
-_CMP_OPS_NO_VALUE   = ["IS NULL", "IS NOT NULL"]
-# Добавлено для подзапросов (ANY/ALL/EXISTS)
-_SUBQUERY_CMP_OPS   = [">=", ">", "=", "<=", "<", "<>"]
+_CMP_OPS_NO_VALUE = ["IS NULL", "IS NOT NULL"]
+_SUBQUERY_CMP_OPS = [">=", ">", "=", "<=", "<", "<>"]
 _QTY = ["ANY", "ALL"]
 
+
 def _is_number(s: str) -> bool:
-    return bool(re.fullmatch(r"-?\\d+(?:\\.\\d+)?", s.strip()))
+    return bool(re.fullmatch(r"-?\d+(?:\.\d+)?", s.strip()))
+
 
 def _sql_quote(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
 
+
 def _id_quote(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
+
 class SelectBuilderDialog(QDialog):
     def __init__(self, parent=None, schema="app"):
+        super().__init__(parent)
+        self.schema = schema
+        self.setWindowTitle("Конструктор запросов (CTE, Views, Grouping)")
+        self.setMinimumSize(1600, 1000)
+
+        # --- Валидаторы ---
+        self._alias_validator = QRegExpValidator(QRegExp(r'^[a-zA-Z_][a-zA-Z0-9_]*$'))
+        self._sql_fragment_validator = QRegExpValidator(QRegExp(r'^[^"\'/\\|`=?!~+<>:;-]*$'))
+
+        # Хранилище CTE: список кортежей (name, sql_body)
+        self.cte_list_data = []
+
+        self._set_default_styles()
+
+        self.layout = QVBoxLayout(self)
+        self.tabs = QTabWidget()
+        self.layout.addWidget(self.tabs)
+
+        # -----------------------------------------------------------
+        # ТАБ 0: CTE (Common Table Expressions)
+        # -----------------------------------------------------------
+        self.tab_cte = QWidget()
+        self._init_cte_tab()
+        self.tabs.addTab(self.tab_cte, "CTE (WITH)")
+
+        # -----------------------------------------------------------
+        # ТАБ 1: Основное (SELECT)
+        # -----------------------------------------------------------
+        self.tab_main = QWidget()
+        self._init_main_tab()
+        self.tabs.addTab(self.tab_main, "SELECT")
+
+        # -----------------------------------------------------------
+        # ТАБ 2: Фильтры и Группировка
+        # -----------------------------------------------------------
+        self.tab_filters = QWidget()
+        self._init_filters_tab()
+        self.tabs.addTab(self.tab_filters, "WHERE / GROUP BY")
+
+        # -----------------------------------------------------------
+        # ТАБ 3: Подзапросы
+        # -----------------------------------------------------------
+        self.tab_subq = QWidget()
+        self._init_subq_tab()
+        self.tabs.addTab(self.tab_subq, "Подзапросы")
+
+        # -----------------------------------------------------------
+        # ТАБ 4: Выражения
+        # -----------------------------------------------------------
+        self.tab_expr = QWidget()
+        self._init_expr_tab()
+        self.tabs.addTab(self.tab_expr, "Выражения (Case/Coalesce)")
+
+        # -----------------------------------------------------------
+        # ТАБ 5: Результат и Создание View
+        # -----------------------------------------------------------
+        self.tab_result = QWidget()
+        self._init_result_tab()
+        self.tabs.addTab(self.tab_result, "Результат / VIEW")
+
+        # Инициализация данных
+        self._load_tables()
+        self._load_columns()
+        self._load_inner_columns()
+        self._toggle_sub_ui()
+
+    def _set_default_styles(self):
+        # Оригинальные стили из вашего исходного файла
+        self.setStyleSheet("""
+            QDialog {
+                background-color: rgba(16, 30, 41, 240);
+                color: white;
+            }
+            QLabel {
+                color: white;
+                font-size: 13px;
+                padding: 8px;
+                font-weight: bold;
+            }
+            QComboBox {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 4px;
+                padding: 12px;    
+                min-height: 40px;  
+                font-size: 24px;   
+            }
+            QComboBox:hover {
+                border: 1px solid rgba(66, 122, 160, 255);
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 6px solid transparent;
+                border-right: 6px solid transparent;
+                border-top: 6px solid white;
+                margin-right: 10px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: rgba(25, 45, 60, 255);
+                color: white;
+                border: 1px solid rgba(46, 82, 110, 255);
+                selection-background-color: rgba(2, 65, 118, 255);
+                font-size: 14px;
+                padding: 12px;
+                outline: none;
+            }
+            QComboBox QAbstractItemView::item {
+                min-height: 30px;  
+                padding: 8px;      
+            }
+            QLineEdit {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 4px;
+                padding: 10px;
+                font-size: 13px;
+                min-height: 20px;
+                font-weight: bold;
+            }
+            QLineEdit:focus {
+                border: 1px solid rgba(66, 122, 160, 255);
+            }
+            QLineEdit:invalid {
+                border: 2px solid rgba(200, 80, 80, 255);
+            }
+            QLineEdit::placeholder {
+                color: rgba(200, 200, 200, 150);
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QTextEdit {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 4px;
+                padding: 10px;
+                font-size: 13px;
+                font-family: 'Courier New', monospace;
+                font-weight: bold;
+            }
+            QTextEdit:focus {
+                border: 1px solid rgba(66, 122, 160, 255);
+            }
+            QTableWidget {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 4px;
+                gridline-color: rgba(46, 82, 110, 150);
+                font-size: 22px;
+                font-weight: bold;
+                outline: none;
+            }
+            QTableWidget::item {
+                background-color: transparent;
+                color: white;
+                border-bottom: 1px solid rgba(46, 82, 110, 100);
+                padding: 8px;
+                font-weight: bold;
+            }
+            QTableWidget::item:selected {
+                background-color: rgba(2, 65, 118, 200);
+                color: white;
+            }
+            QTableWidget::item:hover {
+                background-color: rgba(45, 65, 85, 200);
+            }
+            QHeaderView::section {
+                background-color: rgba(2, 65, 118, 255);
+                color: white;
+                border: none;
+                padding: 8px;
+                font-weight: bold;
+                font-size: 13px;
+                border-right: 1px solid rgba(46, 82, 110, 255);
+                border-bottom: 1px solid rgba(46, 82, 110, 255);
+            }
+            QHeaderView::section:last {
+                border-right: none;
+            }
+            QHeaderView::section:hover {
+                background-color: rgba(2, 65, 118, 200);
+            }
+            QHeaderView::section:pressed {
+                background-color: rgba(2, 65, 118, 100);
+            }
+            QListWidget {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 4px;
+                font-size: 20px;
+                font-weight: bold;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid rgba(46, 82, 110, 100);
+            }
+            QListWidget::item:selected {
+                background-color: rgba(2, 65, 118, 255);
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: rgba(35, 55, 75, 200);
+            }
+            QPushButton {
+                background-color: rgba(2, 65, 118, 255);
+                color: rgba(255, 255, 255, 200);
+                border-radius: 5px;
+                padding: 12px;
+                min-height: 40px;
+                min-width: 120px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(2, 65, 118, 200);
+            }
+            QPushButton:pressed {
+                background-color: rgba(2, 65, 118, 100);
+            }
+            QScrollBar:vertical {
+                border: none;
+                background-color: rgba(25, 45, 60, 200);
+                width: 12px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: rgba(46, 82, 110, 150);
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: rgba(46, 82, 110, 200);
+            }
+            QScrollBar:horizontal {
+                border: none;
+                background-color: rgba(25, 45, 60, 200);
+                height: 12px;
+                margin: 0px;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: rgba(46, 82, 110, 150);
+                border-radius: 6px;
+                min-width: 20px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background-color: rgba(46, 82, 110, 200);
+            }
+            QTableView {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                gridline-color: rgba(46, 82, 110, 150);
+                selection-background-color: rgba(2, 65, 118, 200);
+                selection-color: white;
+                outline: none;
+            }
+            QTableView::item {
+                background-color: transparent;
+                color: white;
+                border-bottom: 1px solid rgba(46, 82, 110, 100);
+                padding: 8px;
+            }
+            QTableCornerButton::section {
+                background-color: rgba(2, 65, 110, 255);
+                border: none;
+            }
+            QAbstractScrollArea {
+                background-color: rgba(25, 45, 60, 200);
+            }
+            QTabWidget::pane {
+                border: 1px solid rgba(46, 82, 110, 255);
+                background-color: rgba(16, 30, 41, 240);
+            }
+            QTabBar::tab {
+                background-color: rgba(25, 45, 60, 200);
+                color: white;
+                padding: 16px 24px;
+                margin-right: 2px;
+                font-size: 13px;
+                font-weight: bold;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }
+            QTabBar::tab:selected {
+                background-color: rgba(2, 65, 118, 255);
+                border-color: rgba(66, 122, 160, 255);
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: rgba(2, 65, 118, 150);
+            }
+            QCheckBox {
+                color: white;
+                font-size: 13px;
+                spacing: 10px;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 3px;
+                background-color: rgba(25, 45, 60, 200);
+            }
+            QCheckBox::indicator:checked {
+                background-color: rgba(2, 65, 118, 255);
+            }
+            QCheckBox::indicator:hover {
+                border: 1px solid rgba(66, 122, 160, 255);
+            }
+            /* Дополнительно для GroupBox (новый элемент) */
+            QGroupBox {
+                border: 1px solid rgba(46, 82, 110, 255);
+                border-radius: 4px;
+                margin-top: 20px;
+                font-weight: bold;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 5px;
+                left: 10px;
+                color: white;
+            }
+        """)
+
+    # ----------------------------------------------------------------------
+    # UI INITIALIZATION METHODS
+    # ----------------------------------------------------------------------
+
+    def _init_cte_tab(self):
+        layout = QVBoxLayout(self.tab_cte)
+        layout.addWidget(QLabel("Управление Common Table Expressions (WITH)"))
+        
+        info = QLabel("Вы можете создать CTE вручную или собрать запрос во вкладках 'SELECT/WHERE' и нажать 'Сохранить текущий запрос как CTE'.")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        # Список CTE
+        self.listCTE = QListWidget()
+        layout.addWidget(self.listCTE, 1)
+
+        # Кнопки управления
+        btn_layout = QHBoxLayout()
+        self.btnCteFromCurrent = QPushButton("Сохранить ТЕКУЩУЮ конфигурацию как CTE")
+        self.btnCteDelete = QPushButton("Удалить выбранный CTE")
+        self.btnCteClear = QPushButton("Очистить все CTE")
+        
+        btn_layout.addWidget(self.btnCteFromCurrent)
+        btn_layout.addWidget(self.btnCteDelete)
+        btn_layout.addWidget(self.btnCteClear)
+        layout.addLayout(btn_layout)
+
+        self.btnCteFromCurrent.clicked.connect(self._add_cte_from_current)
+        self.btnCteDelete.clicked.connect(self._delete_cte)
+        self.btnCteClear.clicked.connect(self._clear_ctes)
+
+    def _init_main_tab(self):
+        layout = QVBoxLayout(self.tab_main)
+
+        hl = QHBoxLayout()
+        hl.addWidget(QLabel("Таблица:"))
+        self.cbTable = QComboBox()
+        self.cbTable.currentIndexChanged.connect(self._load_columns)
+        hl.addWidget(self.cbTable, 1)
+        layout.addLayout(hl)
+
+        layout.addWidget(QLabel("Столбцы (SELECT — неагрегированные):"))
+        self.colsList = QListWidget()
+        # ВАЖНО: возвращаем MultiSelection (без чекбоксов, как в оригинале)
+        self.colsList.setSelectionMode(QListWidget.MultiSelection)
+        layout.addWidget(self.colsList, 2)
+
+        layout.addWidget(QLabel("Агрегаты (SELECT — добавляются отдельными выражениями):"))
+        aggRow = QHBoxLayout()
+        self.cbSelAggFunc = QComboBox()
+        self.cbSelAggFunc.addItems(_AGG_FUNCS)
+        self.cbSelAggCol = QComboBox()
+        self.cbSelAggDistinct = QCheckBox("DISTINCT")
+        self.edSelAggAlias = QLineEdit()
+        self.edSelAggAlias.setPlaceholderText("Псевдоним (alias), опционально")
+        self.edSelAggAlias.setValidator(self._alias_validator)
+        
+        self.btnSelAggAdd = QPushButton("Добавить в SELECT")
+        self.btnSelAggDel = QPushButton("Удалить выбранные")
+
+        aggRow.addWidget(QLabel("Функция"))
+        aggRow.addWidget(self.cbSelAggFunc)
+        aggRow.addWidget(QLabel("Столбец"))
+        aggRow.addWidget(self.cbSelAggCol)
+        aggRow.addWidget(self.cbSelAggDistinct)
+        aggRow.addWidget(QLabel("Алиас"))
+        aggRow.addWidget(self.edSelAggAlias)
+        aggRow.addWidget(self.btnSelAggAdd)
+        aggRow.addWidget(self.btnSelAggDel)
+        layout.addLayout(aggRow)
+
+        self.selAggList = QListWidget()
+        layout.addWidget(self.selAggList, 1)
+
+        self.btnSelAggAdd.clicked.connect(self._add_select_agg)
+        self.btnSelAggDel.clicked.connect(self._del_select_agg)
+
+    def _init_filters_tab(self):
+        layout = QVBoxLayout(self.tab_filters)
+
+        # WHERE
+        layout.addWidget(QLabel("WHERE (без слова WHERE)"))
+        self.edWhere = QLineEdit()
+        self.edWhere.setPlaceholderText("Например: status = 'active' AND price > 100")
+        self.edWhere.setValidator(self._sql_fragment_validator)
+        layout.addWidget(self.edWhere)
+
+        # GROUP BY SECTION
+        grp_box = QGroupBox("Настройка Группировки (GROUP BY)")
+        grp_layout = QVBoxLayout(grp_box)
+        
+        # Тип группировки
+        row_gtype = QHBoxLayout()
+        row_gtype.addWidget(QLabel("Тип:"))
+        self.cbGroupType = QComboBox()
+        self.cbGroupType.addItems(["Автоматически (Simple)", "SIMPLE (Явно)", "ROLLUP", "CUBE", "GROUPING SETS"])
+        row_gtype.addWidget(self.cbGroupType)
+        grp_layout.addLayout(row_gtype)
+
+        grp_layout.addWidget(QLabel("Выберите столбцы для группировки:"))
+        self.listGroupCols = QListWidget()
+        # Тут тоже используем MultiSelection для консистентности стиля
+        self.listGroupCols.setSelectionMode(QListWidget.MultiSelection)
+        grp_layout.addWidget(self.listGroupCols)
+
+        layout.addWidget(grp_box)
+
+        # HAVING
+        layout.addWidget(QLabel("HAVING — конструктор"))
+        row_hav = QHBoxLayout()
+        self.cbHavingFunc = QComboBox()
+        self.cbHavingFunc.addItems(_AGG_FUNCS)
+        self.cbHavingColumn = QComboBox()
+        self.cbHavingOp = QComboBox()
+        self.cbHavingOp.addItems(_CMP_OPS_WITH_VALUE + _CMP_OPS_NO_VALUE)
+        self.edHavingValue = QLineEdit()
+        self.edHavingValue.setPlaceholderText("значение")
+        self.btnHavingAdd = QPushButton("Добавить")
+        self.btnHavingDel = QPushButton("Удалить выбранные")
+
+        row_hav.addWidget(QLabel("Функция"))
+        row_hav.addWidget(self.cbHavingFunc)
+        row_hav.addWidget(QLabel("Столбец"))
+        row_hav.addWidget(self.cbHavingColumn)
+        row_hav.addWidget(QLabel("Оператор"))
+        row_hav.addWidget(self.cbHavingOp)
+        row_hav.addWidget(QLabel("Значение"))
+        row_hav.addWidget(self.edHavingValue)
+        row_hav.addWidget(self.btnHavingAdd)
+        row_hav.addWidget(self.btnHavingDel)
+        layout.addLayout(row_hav)
+
+        self.havingList = QListWidget()
+        layout.addWidget(self.havingList)
+
+        # ORDER BY
+        layout.addWidget(QLabel("ORDER BY"))
+        self.edOrder = QLineEdit()
+        self.edOrder.setPlaceholderText("column1 DESC, column2 ASC")
+        layout.addWidget(self.edOrder)
+
+        # Signals
+        self.btnHavingAdd.clicked.connect(self._add_having)
+        self.btnHavingDel.clicked.connect(self._del_having)
+        self.cbHavingOp.currentIndexChanged.connect(lambda: self.edHavingValue.setEnabled(self.cbHavingOp.currentText() in _CMP_OPS_WITH_VALUE))
+
+    def _init_subq_tab(self):
+        layout = QVBoxLayout(self.tab_subq)
+        layout.addWidget(QLabel("WHERE — подзапросы (ANY/ALL/EXISTS)"))
+        
+        row_top = QHBoxLayout()
+        self.cbSubKind = QComboBox()
+        self.cbSubKind.addItems(["EXISTS", "NOT EXISTS", "Сравнение с ANY/ALL"])
+        self.cbSubKind.currentIndexChanged.connect(self._toggle_sub_ui)
+        self.cbLeftCol = QComboBox()
+        self.cbCmpOp = QComboBox()
+        self.cbCmpOp.addItems(_SUBQUERY_CMP_OPS)
+        self.cbQuantifier = QComboBox()
+        self.cbQuantifier.addItems(_QTY)
+        
+        row_top.addWidget(QLabel("Тип"))
+        row_top.addWidget(self.cbSubKind)
+        row_top.addWidget(QLabel("Внешний столбец"))
+        row_top.addWidget(self.cbLeftCol)
+        row_top.addWidget(QLabel("Оператор"))
+        row_top.addWidget(self.cbCmpOp)
+        row_top.addWidget(QLabel("Квантор"))
+        row_top.addWidget(self.cbQuantifier)
+        layout.addLayout(row_top)
+
+        row_tbl = QHBoxLayout()
+        self.cbInnerTable = QComboBox()
+        self.cbInnerTable.currentIndexChanged.connect(self._load_inner_columns)
+        self.cbInnerCol = QComboBox()
+        row_tbl.addWidget(QLabel("Подзапрос: таблица"))
+        row_tbl.addWidget(self.cbInnerTable)
+        row_tbl.addWidget(QLabel("Столбец в подзапросе"))
+        row_tbl.addWidget(self.cbInnerCol)
+        layout.addLayout(row_tbl)
+
+        # Correlation
+        row_corr = QHBoxLayout()
+        self.cbCorrOuter = QComboBox()
+        self.cbCorrInner = QComboBox()
+        self.btnCorrAdd = QPushButton("Добавить связь")
+        self.btnCorrDel = QPushButton("Удалить связь")
+        row_corr.addWidget(QLabel("Связь: внешний"))
+        row_corr.addWidget(self.cbCorrOuter)
+        row_corr.addWidget(QLabel("="))
+        row_corr.addWidget(self.cbCorrInner)
+        row_corr.addWidget(self.btnCorrAdd)
+        row_corr.addWidget(self.btnCorrDel)
+        layout.addLayout(row_corr)
+        self.corrList = QListWidget()
+        layout.addWidget(self.corrList)
+
+        # Control
+        row_btn = QHBoxLayout()
+        self.btnSubAdd = QPushButton("Добавить фильтр в WHERE")
+        self.btnSubDel = QPushButton("Удалить выбранные")
+        row_btn.addWidget(self.btnSubAdd)
+        row_btn.addWidget(self.btnSubDel)
+        layout.addLayout(row_btn)
+        
+        self.subFilterList = QListWidget()
+        layout.addWidget(self.subFilterList)
+
+        self.btnCorrAdd.clicked.connect(self._add_corr)
+        self.btnCorrDel.clicked.connect(self._del_corr)
+        self.btnSubAdd.clicked.connect(self._add_subfilter)
+        self.btnSubDel.clicked.connect(self._del_subfilter)
+
+    def _init_expr_tab(self):
+        # Вкладка с CASE / COALESCE
+        layout = QVBoxLayout(self.tab_expr)
+        
+        # CASE Builder
+        gb_case = QGroupBox("CASE Builder")
+        l_case = QVBoxLayout(gb_case)
+        
+        r1 = QHBoxLayout()
+        self.edCaseAlias = QLineEdit()
+        self.edCaseAlias.setPlaceholderText("Алиас результирующего столбца")
+        r1.addWidget(QLabel("Алиас"))
+        r1.addWidget(self.edCaseAlias)
+        l_case.addLayout(r1)
+
+        r2 = QHBoxLayout()
+        self.cbWhenCol = QComboBox()
+        self.cbWhenOp = QComboBox()
+        self.cbWhenOp.addItems(_CMP_OPS_WITH_VALUE + _CMP_OPS_NO_VALUE)
+        self.edWhenVal = QLineEdit()
+        self.edWhenVal.setPlaceholderText("значение")
+        self.edThenVal = QLineEdit()
+        self.edThenVal.setPlaceholderText("THEN значение")
+        self.btnWhenAdd = QPushButton("Добавить WHEN-THEN")
+        r2.addWidget(QLabel("WHEN"))
+        r2.addWidget(self.cbWhenCol)
+        r2.addWidget(self.cbWhenOp)
+        r2.addWidget(self.edWhenVal)
+        r2.addWidget(QLabel("THEN"))
+        r2.addWidget(self.edThenVal)
+        r2.addWidget(self.btnWhenAdd)
+        l_case.addLayout(r2)
+        
+        self.caseWhenList = QListWidget()
+        l_case.addWidget(self.caseWhenList)
+
+        r3 = QHBoxLayout()
+        self.edElseVal = QLineEdit()
+        self.edElseVal.setPlaceholderText("ELSE значение (опционально)")
+        self.btnCaseAddExpr = QPushButton("Добавить CASE в SELECT")
+        r3.addWidget(QLabel("ELSE"))
+        r3.addWidget(self.edElseVal)
+        r3.addWidget(self.btnCaseAddExpr)
+        l_case.addLayout(r3)
+        
+        layout.addWidget(gb_case)
+
+        # Result List
+        layout.addWidget(QLabel("Выражения для SELECT"))
+        self.exprList = QListWidget()
+        layout.addWidget(self.exprList)
+        self.btnExprDel = QPushButton("Удалить выбранные выражения")
+        self.btnExprDel.clicked.connect(self._del_expr)
+        layout.addWidget(self.btnExprDel)
+
+        self.btnWhenAdd.clicked.connect(self._add_case_when)
+        self.btnCaseAddExpr.clicked.connect(self._add_case_expr)
+
+    def _init_result_tab(self):
+        layout = QVBoxLayout(self.tab_result)
+
+        h_gen = QHBoxLayout()
+        self.btnGenerate = QPushButton("Сгенерировать SQL")
+        self.btnGenerate.setStyleSheet("background-color: #2E7D32;") # Green
+        h_gen.addWidget(self.btnGenerate)
+        layout.addLayout(h_gen)
+
+        self.sqlView = QTextEdit()
+        layout.addWidget(self.sqlView, 1)
+
+        h_acts = QHBoxLayout()
+        self.btnRun = QPushButton("Выполнить и показать")
+        self.btnCreateView = QPushButton("Создать VIEW")
+        self.btnCreateMatView = QPushButton("Создать MAT VIEW")
+        
+        h_acts.addWidget(self.btnRun)
+        h_acts.addWidget(self.btnCreateView)
+        h_acts.addWidget(self.btnCreateMatView)
+        layout.addLayout(h_acts)
+
+        self.tbl = QTableWidget()
+        layout.addWidget(self.tbl, 3)
+
+        self.btnGenerate.clicked.connect(self._gen_sql_ui)
+        self.btnRun.clicked.connect(self._run_sql)
+        self.btnCreateView.clicked.connect(lambda: self._create_view_handler(False))
+        self.btnCreateMatView.clicked.connect(lambda: self._create_view_handler(True))
+
+    # ----------------------------------------------------------------------
+    # LOAD DATA
+    # ----------------------------------------------------------------------
+
+    def _load_tables(self):
         try:
-            super().__init__(parent)
-            self.schema = schema
-            self.setWindowTitle("SELECT — конструктор")
-            self.setMinimumSize(1600, 1000)
-
-            self.setStyleSheet("""
-                QDialog {
-                    background-color: rgba(16, 30, 41, 240);
-                    color: white;
-                }
-                QLabel {
-                    color: white;
-                    font-size: 13px;
-                    padding: 8px;
-                    font-weight: bold;
-                }
-                QComboBox {
-                    background-color: rgba(25, 45, 60, 200);
-                    color: white;
-                    border: 1px solid rgba(46, 82, 110, 255);
-                    border-radius: 4px;
-                    padding: 12px;    
-                    min-height: 40px;  
-                    font-size: 24px;   
-                }
-                QComboBox:hover {
-                    border: 1px solid rgba(66, 122, 160, 255);
-                }
-                QComboBox::drop-down {
-                    border: none;
-                    width: 30px;
-                }
-                QComboBox::down-arrow {
-                    image: none;
-                    border-left: 6px solid transparent;
-                    border-right: 6px solid transparent;
-                    border-top: 6px solid white;
-                    margin-right: 10px;
-                }
-                QComboBox QAbstractItemView {
-                    background-color: rgba(25, 45, 60, 255);
-                    color: white;
-                    border: 1px solid rgba(46, 82, 110, 255);
-                    selection-background-color: rgba(2, 65, 118, 255);
-                    font-size: 14px;
-                    padding: 12px;
-                    outline: none;
-                }
-                QComboBox QAbstractItemView::item {
-                    min-height: 30px;  
-                    padding: 8px;      
-                }
-                QLineEdit {
-                    background-color: rgba(25, 45, 60, 200);
-                    color: white;
-                    border: 1px solid rgba(46, 82, 110, 255);
-                    border-radius: 4px;
-                    padding: 10px;
-                    font-size: 13px;
-                    min-height: 20px;
-                    font-weight: bold;
-                }
-                QLineEdit:focus {
-                    border: 1px solid rgba(66, 122, 160, 255);
-                }
-                QLineEdit::placeholder {
-                    color: rgba(200, 200, 200, 150);
-                    font-size: 12px;
-                    font-weight: bold;
-                }
-                QTextEdit {
-                    background-color: rgba(25, 45, 60, 200);
-                    color: white;
-                    border: 1px solid rgba(46, 82, 110, 255);
-                    border-radius: 4px;
-                    padding: 10px;
-                    font-size: 13px;
-                    font-family: 'Courier New', monospace;
-                    font-weight: bold;
-                }
-                QTextEdit:focus {
-                    border: 1px solid rgba(66, 122, 160, 255);
-                }
-                QTableWidget {
-                    background-color: rgba(25, 45, 60, 200);
-                    color: white;
-                    border: 1px solid rgba(46, 82, 110, 255);
-                    border-radius: 4px;
-                    gridline-color: rgba(46, 82, 110, 150);
-                    font-size: 22px;
-                    font-weight: bold;
-                    outline: none;
-                }
-                QTableWidget::item {
-                    background-color: transparent;
-                    color: white;
-                    border-bottom: 1px solid rgba(46, 82, 110, 100);
-                    padding: 8px;
-                    font-weight: bold;
-                }
-                QTableWidget::item:selected {
-                    background-color: rgba(2, 65, 118, 200);
-                    color: white;
-                }
-                QTableWidget::item:hover {
-                    background-color: rgba(45, 65, 85, 200);
-                }
-                QHeaderView::section {
-                    background-color: rgba(2, 65, 118, 255);
-                    color: white;
-                    border: none;
-                    padding: 8px;
-                    font-weight: bold;
-                    font-size: 13px;
-                    border-right: 1px solid rgba(46, 82, 110, 255);
-                    border-bottom: 1px solid rgba(46, 82, 110, 255);
-                }
-                QHeaderView::section:last {
-                    border-right: none;
-                }
-                QHeaderView::section:hover {
-                    background-color: rgba(2, 65, 118, 200);
-                }
-                QHeaderView::section:pressed {
-                    background-color: rgba(2, 65, 118, 100);
-                }
-                QListWidget {
-                    background-color: rgba(25, 45, 60, 200);
-                    color: white;
-                    border: 1px solid rgba(46, 82, 110, 255);
-                    border-radius: 4px;
-                    font-size: 20px;
-                    font-weight: bold;
-                    outline: none;
-                }
-                QListWidget::item {
-                    padding: 8px;
-                    border-bottom: 1px solid rgba(46, 82, 110, 100);
-                }
-                QListWidget::item:selected {
-                    background-color: rgba(2, 65, 118, 255);
-                    color: white;
-                }
-                QListWidget::item:hover {
-                    background-color: rgba(35, 55, 75, 200);
-                }
-                QPushButton {
-                    background-color: rgba(2, 65, 118, 255);
-                    color: rgba(255, 255, 255, 200);
-                    border-radius: 5px;
-                    padding: 12px;
-                    min-height: 40px;
-                    min-width: 120px;
-                    font-size: 13px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(2, 65, 118, 200);
-                }
-                QPushButton:pressed {
-                    background-color: rgba(2, 65, 118, 100);
-                }
-                QScrollBar:vertical {
-                    border: none;
-                    background-color: rgba(25, 45, 60, 200);
-                    width: 12px;
-                    margin: 0px;
-                }
-                QScrollBar::handle:vertical {
-                    background-color: rgba(46, 82, 110, 150);
-                    border-radius: 6px;
-                    min-height: 20px;
-                }
-                QScrollBar::handle:vertical:hover {
-                    background-color: rgba(46, 82, 110, 200);
-                }
-                QScrollBar:horizontal {
-                    border: none;
-                    background-color: rgba(25, 45, 60, 200);
-                    height: 12px;
-                    margin: 0px;
-                }
-                QScrollBar::handle:horizontal {
-                    background-color: rgba(46, 82, 110, 150);
-                    border-radius: 6px;
-                    min-width: 20px;
-                }
-                QScrollBar::handle:horizontal:hover {
-                    background-color: rgba(46, 82, 110, 200);
-                }
-                QTableView {
-                    background-color: rgba(25, 45, 60, 200);
-                    color: white;
-                    gridline-color: rgba(46, 82, 110, 150);
-                    selection-background-color: rgba(2, 65, 118, 200);
-                    selection-color: white;
-                    outline: none;
-                }
-                QTableView::item {
-                    background-color: transparent;
-                    color: white;
-                    border-bottom: 1px solid rgba(46, 82, 110, 100);
-                    padding: 8px;
-                }
-                QTableCornerButton::section {
-                    background-color: rgba(2, 65, 110, 255);
-                    border: none;
-                }
-                QAbstractScrollArea {
-                    background-color: rgba(25, 45, 60, 200);
-                }
-                /* Добавленные стили для вкладок и чекбоксов */
-                QTabWidget::pane {
-                    border: 1px solid rgba(46, 82, 110, 255);
-                    background-color: rgba(16, 30, 41, 240);
-                }
-                QTabBar::tab {
-                    background-color: rgba(25, 45, 60, 200);
-                    color: white;
-                    padding: 16px 24px;
-                    margin-right: 2px;
-                    font-size: 13px;
-                    font-weight: bold;
-                    border: 1px solid rgba(46, 82, 110, 255);
-                    border-bottom: none;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                }
-                QTabBar::tab:selected {
-                    background-color: rgba(2, 65, 118, 255);
-                    border-color: rgba(66, 122, 160, 255);
-                }
-                QTabBar::tab:hover:!selected {
-                    background-color: rgba(2, 65, 118, 150);
-                }
-                QCheckBox {
-                    color: white;
-                    font-size: 13px;
-                    spacing: 10px;
-                    font-weight: bold;
-                }
-                QCheckBox::indicator {
-                    width: 18px;
-                    height: 18px;
-                    border: 1px solid rgba(46, 82, 110, 255);
-                    border-radius: 3px;
-                    background-color: rgba(25, 45, 60, 200);
-                }
-                QCheckBox::indicator:checked {
-                    background-color: rgba(2, 65, 118, 255);
-                }
-                QCheckBox::indicator:hover {
-                    border: 1px solid rgba(66, 122, 160, 255);
-                }
-            """)
-
-            main_layout = QVBoxLayout(self)
-            tabs = QTabWidget()
-            main_layout.addWidget(tabs)
-
-            # ---------- Страница 1: Основное ----------
-            page_main = QWidget()
-            L1 = QVBoxLayout(page_main)
-
-            hl = QHBoxLayout()
-            hl.addWidget(QLabel("Таблица:"))
-            self.cbTable = QComboBox()
-            try:
-                tables = list(db.list_tables(schema))
-            except Exception as e:
-                print("Ошибка при получении списка таблиц из db.list_tables:", e)
-                tables = []
+            self.cbTable.clear()
+            self.cbInnerTable.clear()
+            tables = list(db.list_tables(self.schema))
             for s, t in tables:
-                self.cbTable.addItem(f"{s}.{t}", (s, t))
-            self.cbTable.currentIndexChanged.connect(self._load_columns)
-            hl.addWidget(self.cbTable, 1)
-            L1.addLayout(hl)
-
-            L1.addWidget(QLabel("Столбцы (SELECT — неагрегированные):"))
-            self.colsList = QListWidget()
-            self.colsList.setSelectionMode(self.colsList.MultiSelection)
-            L1.addWidget(self.colsList, 2)
-
-            L1.addWidget(QLabel("Агрегаты (SELECT — добавляются отдельными выражениями):"))
-            aggRow = QHBoxLayout()
-            self.cbSelAggFunc = QComboBox(); self.cbSelAggFunc.addItems(_AGG_FUNCS)
-            self.cbSelAggCol = QComboBox(); self.cbSelAggCol.addItem("*")
-            self.cbSelAggDistinct = QCheckBox("DISTINCT")
-            self.edSelAggAlias = QLineEdit(); self.edSelAggAlias.setPlaceholderText("Псевдоним (alias), опционально")
-            self.btnSelAggAdd = QPushButton("Добавить в SELECT")
-            self.btnSelAggDel = QPushButton("Удалить выбранные")
-            for w in [
-                QLabel("Функция"), self.cbSelAggFunc, QLabel("Столбец"), self.cbSelAggCol,
-                self.cbSelAggDistinct, QLabel("Алиас"), self.edSelAggAlias,
-                self.btnSelAggAdd, self.btnSelAggDel
-            ]:
-                aggRow.addWidget(w)
-            L1.addLayout(aggRow)
-            self.selAggList = QListWidget()
-            L1.addWidget(self.selAggList, 1)
-
-            tabs.addTab(page_main, "Основное")
-
-            # ---------- Страница 2: Фильтры ----------
-            page_filters = QWidget()
-            L2 = QVBoxLayout(page_filters)
-
-            self.edWhere = QLineEdit(); self.edWhere.setPlaceholderText("WHERE (без слова WHERE)")
-            self.edGroup = QLineEdit(); self.edGroup.setPlaceholderText("GROUP BY (можно оставить пустым — есть авто)")
-            self.edHaving = QLineEdit(); self.edHaving.setPlaceholderText("HAVING (сюда пишет конструктор ниже)")
-            self.edOrder = QLineEdit(); self.edOrder.setPlaceholderText("ORDER BY")
-            for w in (self.edWhere, self.edGroup, self.edHaving, self.edOrder):
-                L2.addWidget(w)
-
-            self.cbAutoGroup = QCheckBox("Автоматически подставлять GROUP BY по выбранным неагрегированным столбцам")
-            self.cbAutoGroup.setChecked(True)
-            L2.addWidget(self.cbAutoGroup)
-            # === HAVING — конструктор ===
-            L2.addWidget(QLabel("HAVING — конструктор"))
-            row1 = QHBoxLayout()
-            self.cbHavingFunc = QComboBox(); self.cbHavingFunc.addItems(_AGG_FUNCS)
-            self.cbHavingColumn = QComboBox(); self.cbHavingColumn.addItem("*")
-            self.cbHavingOp = QComboBox(); self.cbHavingOp.addItems(_CMP_OPS_WITH_VALUE + _CMP_OPS_NO_VALUE)
-            self.edHavingValue = QLineEdit(); self.edHavingValue.setPlaceholderText("значение (для IN: a,b,c | BETWEEN: a AND b)")
-            self.btnHavingAdd = QPushButton("Добавить"); self.btnHavingDel = QPushButton("Удалить выбранные")
-            for w in [QLabel("Функция"), self.cbHavingFunc, QLabel("Столбец"), self.cbHavingColumn,
-                      QLabel("Оператор"), self.cbHavingOp, QLabel("Значение"), self.edHavingValue,
-                      self.btnHavingAdd, self.btnHavingDel]:
-                row1.addWidget(w)
-            L2.addLayout(row1)
-            self.havingList = QListWidget(); L2.addWidget(self.havingList, 1)
-
-            tabs.addTab(page_filters, "Фильтры")
-
-            # ---------- Новая вкладка: Подзапросы ----------
-            page_subq = QWidget()
-            Lsub = QVBoxLayout(page_subq)
-
-            Lsub.addWidget(QLabel("WHERE — подзапросы (ANY/ALL/EXISTS)"))
-
-            row_sub_top = QHBoxLayout()
-            self.cbSubKind = QComboBox(); self.cbSubKind.addItems(["EXISTS", "NOT EXISTS", "Сравнение с ANY/ALL"])
-            self.cbLeftCol = QComboBox()
-            self.cbCmpOp = QComboBox(); self.cbCmpOp.addItems(_SUBQUERY_CMP_OPS)
-            self.cbQuantifier = QComboBox(); self.cbQuantifier.addItems(_QTY)
-            row_sub_top.addWidget(QLabel("Тип"));           row_sub_top.addWidget(self.cbSubKind)
-            row_sub_top.addWidget(QLabel("Внешний столбец")); row_sub_top.addWidget(self.cbLeftCol, 1)
-            row_sub_top.addWidget(QLabel("Оператор"));     row_sub_top.addWidget(self.cbCmpOp)
-            row_sub_top.addWidget(QLabel("Квантор"));      row_sub_top.addWidget(self.cbQuantifier)
-            Lsub.addLayout(row_sub_top)
-
-            row_sub_mid = QHBoxLayout()
-            self.cbInnerTable = QComboBox()
-            try:
-                for s, t in db.list_tables(self.schema):
-                    self.cbInnerTable.addItem(f"{s}.{t}", (s, t))
-            except Exception as e:
-                print("Ошибка при получении списка таблиц для подзапроса:", e)
-            self.cbInnerTable.currentIndexChanged.connect(self._load_inner_columns)
-            self.cbInnerCol = QComboBox()
-            row_sub_mid.addWidget(QLabel("Подзапрос: таблица")); row_sub_mid.addWidget(self.cbInnerTable, 1)
-            row_sub_mid.addWidget(QLabel("Столбец в подзапросе")); row_sub_mid.addWidget(self.cbInnerCol, 1)
-            Lsub.addLayout(row_sub_mid)
-
-            row_corr = QHBoxLayout()
-            self.cbCorrOuter = QComboBox(); self.cbCorrInner = QComboBox()
-            self.btnCorrAdd = QPushButton("Добавить связь"); self.btnCorrDel = QPushButton("Удалить связь")
-            self.btnCorrSuggest = QPushButton("Подсказать по FK")
-            row_corr.addWidget(QLabel("Связь: внешний")); row_corr.addWidget(self.cbCorrOuter, 1)
-            row_corr.addWidget(QLabel("=")); row_corr.addWidget(self.cbCorrInner, 1)
-            row_corr.addWidget(self.btnCorrAdd); row_corr.addWidget(self.btnCorrDel); row_corr.addWidget(self.btnCorrSuggest)
-            Lsub.addLayout(row_corr)
-            self.corrList = QListWidget(); Lsub.addWidget(self.corrList, 1)
-
-            row_in_where = QHBoxLayout()
-            self.cbInWhereCol = QComboBox()
-            self.cbInWhereOp = QComboBox(); self.cbInWhereOp.addItems(_CMP_OPS_WITH_VALUE + _CMP_OPS_NO_VALUE)
-            self.edInWhereVal = QLineEdit(); self.edInWhereVal.setPlaceholderText("значение (для IN: a,b,c | BETWEEN: a AND b)")
-            self.btnInWhereAdd = QPushButton("Добавить условие"); self.btnInWhereDel = QPushButton("Удалить выбранные")
-            row_in_where.addWidget(QLabel("Где (в подзапросе): столбец")); row_in_where.addWidget(self.cbInWhereCol, 1)
-            row_in_where.addWidget(QLabel("Оператор")); row_in_where.addWidget(self.cbInWhereOp)
-            row_in_where.addWidget(QLabel("Значение")); row_in_where.addWidget(self.edInWhereVal, 1)
-            row_in_where.addWidget(self.btnInWhereAdd); row_in_where.addWidget(self.btnInWhereDel)
-            Lsub.addLayout(row_in_where)
-            self.inWhereList = QListWidget(); Lsub.addWidget(self.inWhereList, 1)
-
-            ctl_row = QHBoxLayout()
-            self.btnSubAdd = QPushButton("Добавить фильтр в WHERE"); self.btnSubDel = QPushButton("Удалить выбранные фильтры")
-            ctl_row.addWidget(self.btnSubAdd); ctl_row.addWidget(self.btnSubDel)
-            Lsub.addLayout(ctl_row)
-            self.subFilterList = QListWidget(); Lsub.addWidget(self.subFilterList, 1)
-
-            tabs.addTab(page_subq, "Подзапросы")
-
-            # ---------- Новая вкладка: Выражения (CASE / COALESCE / NULLIF) ----------
-            page_expr = QWidget()
-            Lex = QVBoxLayout(page_expr)
-
-            # Заголовок CASE
-            row_case_header = QHBoxLayout()
-            self.edCaseAlias = QLineEdit(); self.edCaseAlias.setPlaceholderText("Алиас результирующего столбца")
-            row_case_header.addWidget(QLabel("Алиас")); row_case_header.addWidget(self.edCaseAlias, 1)
-            Lex.addLayout(row_case_header)
-
-            # WHEN ... THEN ...
-            row_when = QHBoxLayout()
-            self.cbWhenCol = QComboBox()
-            self.cbWhenOp = QComboBox(); self.cbWhenOp.addItems(_CMP_OPS_WITH_VALUE + _CMP_OPS_NO_VALUE)
-            self.edWhenVal = QLineEdit(); self.edWhenVal.setPlaceholderText("значение (IN: a,b,c | BETWEEN: a AND b)")
-            self.edThenVal = QLineEdit(); self.edThenVal.setPlaceholderText("THEN значение")
-            self.btnWhenAdd = QPushButton("Добавить WHEN-THEN")
-            self.btnWhenDel = QPushButton("Удалить выбранные")
-            for w in [QLabel("WHEN: столбец"), self.cbWhenCol, QLabel("оператор"), self.cbWhenOp,
-                    QLabel("значение"), self.edWhenVal, QLabel("THEN"), self.edThenVal,
-                    self.btnWhenAdd, self.btnWhenDel]:
-                row_when.addWidget(w)
-            Lex.addLayout(row_when)
-            self.caseWhenList = QListWidget(); Lex.addWidget(self.caseWhenList, 1)
-
-            # ELSE
-            row_else = QHBoxLayout()
-            self.edElseVal = QLineEdit(); self.edElseVal.setPlaceholderText("ELSE значение (опционально)")
-            row_else.addWidget(QLabel("ELSE")); row_else.addWidget(self.edElseVal, 1)
-            Lex.addLayout(row_else)
-
-            # Кнопка "Добавить CASE"
-            row_case_ctl = QHBoxLayout()
-            self.btnCaseAddExpr = QPushButton("Добавить CASE в SELECT")
-            row_case_ctl.addWidget(self.btnCaseAddExpr)
-            Lex.addLayout(row_case_ctl)
-
-            # NULL-обработка
-            Lex.addWidget(QLabel("NULL-обработка: COALESCE / NULLIF"))
-
-            # COALESCE(col, value)
-            row_coalesce = QHBoxLayout()
-            self.cbCoalCol = QComboBox()
-            self.edCoalVal = QLineEdit(); self.edCoalVal.setPlaceholderText("подстановка вместо NULL")
-            self.btnCoalesceAdd = QPushButton("Добавить COALESCE(col, value)")
-            for w in [QLabel("COALESCE: столбец"), self.cbCoalCol, QLabel(", значение"), self.edCoalVal, self.btnCoalesceAdd]:
-                row_coalesce.addWidget(w)
-            Lex.addLayout(row_coalesce)
-
-            # NULLIF(col, value)
-            row_nullif = QHBoxLayout()
-            self.cbNullifCol = QComboBox()
-            self.edNullifVal = QLineEdit(); self.edNullifVal.setPlaceholderText("значение для сравнения")
-            self.btnNullifAdd = QPushButton("Добавить NULLIF(col, value)")
-            for w in [QLabel("NULLIF: столбец"), self.cbNullifCol, QLabel(", значение"), self.edNullifVal, self.btnNullifAdd]:
-                row_nullif.addWidget(w)
-            Lex.addLayout(row_nullif)
-
-            # Итоговый список выражений для SELECT
-            Lex.addWidget(QLabel("Выражения для SELECT"))
-            self.exprList = QListWidget(); Lex.addWidget(self.exprList, 1)
-            row_expr_ctl = QHBoxLayout()
-            self.btnExprDel = QPushButton("Удалить выбранные выражения")
-            row_expr_ctl.addWidget(self.btnExprDel)
-            Lex.addLayout(row_expr_ctl)
-
-            tabs.addTab(page_expr, "Выражения")
-
-            
-            # ---------- Страница 3: Результат ----------
-            page_result = QWidget()
-            L3 = QVBoxLayout(page_result)
-
-            self.btnGenerate = QPushButton("Сгенерировать SQL")
-            self.sqlView = QTextEdit()
-            self.btnRun = QPushButton("Выполнить и показать")
-            L3.addWidget(self.btnGenerate)
-            L3.addWidget(self.sqlView, 1)
-            L3.addWidget(self.btnRun)
-
-            self.tbl = QTableWidget()
-            L3.addWidget(self.tbl, 4)
-
-            tabs.addTab(page_result, "Результат")
-
-            # Сигналы и инициализация (подключаем после создания виджетов)
-            self.btnGenerate.clicked.connect(self._gen_sql)
-            self.btnRun.clicked.connect(self._run_sql)
-
-            # Сигналы и инициализация (подключаем после создания виджетов)
-            self.btnGenerate.clicked.connect(self._gen_sql)
-            self.btnRun.clicked.connect(self._run_sql)
-
-            # CASE / COALESCE / NULLIF
-            self.btnWhenAdd.clicked.connect(self._add_case_when)
-            self.btnWhenDel.clicked.connect(self._del_case_when)
-            self.cbWhenOp.currentIndexChanged.connect(self._on_when_op_change)
-            self.btnCaseAddExpr.clicked.connect(self._add_case_expr)
-            self.btnCoalesceAdd.clicked.connect(self._add_coalesce_expr)
-            self.btnNullifAdd.clicked.connect(self._add_nullif_expr)
-            self.btnExprDel.clicked.connect(self._del_expr)
-
-
-            # HAVING
-            self.btnHavingAdd.clicked.connect(self._add_having)
-            self.btnHavingDel.clicked.connect(self._del_having)
-            self.cbHavingOp.currentIndexChanged.connect(self._on_having_op_change)
-
-            # SELECT агрегаты
-            self.btnSelAggAdd.clicked.connect(self._add_select_agg)
-            self.btnSelAggDel.clicked.connect(self._del_select_agg)
-            self.cbSelAggFunc.currentIndexChanged.connect(self._on_select_agg_func_change)
-
-            # Подзапросы — события
-            self.cbSubKind.currentIndexChanged.connect(self._toggle_sub_ui)
-            self.btnCorrAdd.clicked.connect(self._add_corr)
-            self.btnCorrDel.clicked.connect(self._del_corr)
-            self.btnCorrSuggest.clicked.connect(self._suggest_corr)
-            self.btnInWhereAdd.clicked.connect(self._add_in_where)
-            self.btnInWhereDel.clicked.connect(self._del_in_where)
-            self.btnSubAdd.clicked.connect(self._add_subfilter)
-            self.btnSubDel.clicked.connect(self._del_subfilter)
-            self.cbInWhereOp.currentIndexChanged.connect(self._on_in_where_op_change)
-
-            # Загрузим колонки и внутренние колонки — безопасно
-            self._load_columns()
-            self._load_inner_columns()
-            self._toggle_sub_ui()
-
-            for lst in (self.colsList, self.selAggList, self.havingList, self.corrList, self.inWhereList, self.subFilterList):
-                lst.setFocusPolicy(Qt.NoFocus)
-
-        except Exception as e:
-            print("Unhandled exception in SelectBuilderDialog.__init__:", e)
-            traceback.print_exc()
-            QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при инициализации окна:\n{e}")
-
-    # === UI helpers ===
-    def _on_having_op_change(self):
-        op = self.cbHavingOp.currentText()
-        self.edHavingValue.setEnabled(op in _CMP_OPS_WITH_VALUE)
-
-    def _on_in_where_op_change(self):
-        op = self.cbInWhereOp.currentText()
-        self.edInWhereVal.setEnabled(op in _CMP_OPS_WITH_VALUE)
-
-    def _on_select_agg_func_change(self):
-        pass
+                text = f"{s}.{t}"
+                self.cbTable.addItem(text, (s, t))
+                self.cbInnerTable.addItem(text, (s, t))
+        except Exception:
+            pass
 
     def _load_columns(self):
-        try:
-            self.colsList.clear()
-            self.cbHavingColumn.clear(); self.cbHavingColumn.addItem("*")
-            self.cbSelAggCol.clear(); self.cbSelAggCol.addItem("*")
-            # для подзапросов
-            self.cbLeftCol.clear()
-            self.cbCorrOuter.clear() 
+        # Загрузка колонок для всех списков
+        self.colsList.clear()
+        self.listGroupCols.clear()
+        self.cbSelAggCol.clear()
+        self.cbSelAggCol.addItem("*")
+        self.cbHavingColumn.clear()
+        self.cbHavingColumn.addItem("*")
+        self.cbLeftCol.clear()
+        self.cbCorrOuter.clear()
+        self.cbWhenCol.clear()
 
-            s,t = self.cbTable.currentData() or (None, None)
-            if s is None:
-                return
-            for c in db.list_columns(s,t):
+        s, t = self.cbTable.currentData() or (None, None)
+        if not s: return
+
+        try:
+            cols = db.list_columns(s, t)
+            for c in cols:
                 name = c["column_name"]
-                it = QListWidgetItem(name)
-                it.setSelected(True)
-                self.colsList.addItem(it)
-                self.cbHavingColumn.addItem(name)
+                
+                # Main Select List - ВЕРНУЛИ СТАРЫЙ СТИЛЬ (без чекбоксов, только select)
+                item = QListWidgetItem(name)
+                # item.setCheckState(...) <-- УБРАНО
+                item.setSelected(True) # Выбираем по умолчанию, как в оригинале
+                self.colsList.addItem(item)
+                
+                # Group By List
+                g_item = QListWidgetItem(name)
+                self.listGroupCols.addItem(g_item)
+
                 self.cbSelAggCol.addItem(name)
+                self.cbHavingColumn.addItem(name)
                 self.cbLeftCol.addItem(name)
                 self.cbCorrOuter.addItem(name)
-                # источники для вкладки "Выражения"
                 self.cbWhenCol.addItem(name)
-                self.cbCoalCol.addItem(name)
-                self.cbNullifCol.addItem(name)
+                
         except Exception as e:
-            print("Ошибка в _load_columns:", e)
-            traceback.print_exc()
+            print(e)
 
     def _load_inner_columns(self):
+        self.cbInnerCol.clear()
+        self.cbCorrInner.clear()
+        s, t = self.cbInnerTable.currentData() or (None, None)
+        if not s: return
         try:
-            self.cbInnerCol.clear()
-            self.cbInWhereCol.clear()
-            self.cbCorrInner.clear()
-            if self.cbInnerTable.count():
-                s2, t2 = self.cbInnerTable.currentData()
-            else:
-                s2, t2 = self.schema, ""
-            if not t2:
-                return
-            for c in db.list_columns(s2, t2):
+            for c in db.list_columns(s, t):
                 name = c["column_name"]
                 self.cbInnerCol.addItem(name)
-                self.cbInWhereCol.addItem(name)
                 self.cbCorrInner.addItem(name)
-        except Exception as e:
-            print("Ошибка в _load_inner_columns:", e)
-            traceback.print_exc()
+        except: pass
 
-    def _toggle_sub_ui(self):
-        try:
-            kind = self.cbSubKind.currentText()
-            any_all = (kind == "Сравнение с ANY/ALL")
-            for w in (self.cbLeftCol, self.cbCmpOp, self.cbQuantifier, self.cbInnerCol):
-                w.setEnabled(any_all)
-        except Exception as e:
-            print("Ошибка в _toggle_sub_ui:", e)
+    # ----------------------------------------------------------------------
+    # CTE LOGIC
+    # ----------------------------------------------------------------------
+    def _add_cte_from_current(self):
+        """Generates SQL from current tabs and adds it as a CTE"""
+        sql = self._generate_select_sql_string()
+        if not sql: return
 
-    # === Вкладка "Выражения" — CASE/COALESCE/NULLIF ===
-    def _on_when_op_change(self):
-        op = self.cbWhenOp.currentText()
-        self.edWhenVal.setEnabled(op in _CMP_OPS_WITH_VALUE)
-
-    def _add_case_when(self):
-        try:
-            col = self.cbWhenCol.currentText().strip()
-            op = self.cbWhenOp.currentText().strip()
-            wval = self.edWhenVal.text().strip()
-            tval = self.edThenVal.text().strip()
-            if not tval:
-                QMessageBox.warning(self, "CASE", "Укажите значение для THEN.")
+        name, ok = QInputDialog.getText(self, "Новый CTE", "Введите имя для CTE (alias):")
+        if ok and name:
+            if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+                QMessageBox.warning(self, "Ошибка", "Некорректное имя CTE.")
                 return
-            when_sql = "WHEN "
-            if op in _CMP_OPS_WITH_VALUE:
-                if op.endswith("IN"):
-                    parts = [p.strip() for p in (wval or "").split(',') if p.strip()]
-                    if not parts:
-                        QMessageBox.warning(self, "CASE", "Для IN укажите список значений.")
-                        return
-                    norm = [p if _is_number(p) else _sql_quote(p) for p in parts]
-                    cond = f"{_id_quote(col)} IN (" + ", ".join(norm) + ")"
-                elif op.endswith("BETWEEN"):
-                    m = re.match(r"(.+)\\s+AND\\s+(.+)", wval or "", flags=re.I)
-                    if not m:
-                        QMessageBox.warning(self, "CASE", "Для BETWEEN укажите: a AND b")
-                        return
-                    a, b = m.group(1).strip(), m.group(2).strip()
-                    a = a if _is_number(a) else _sql_quote(a)
-                    b = b if _is_number(b) else _sql_quote(b)
-                    cond = f"{_id_quote(col)} BETWEEN {a} AND {b}"
-                else:
-                    if not wval:
-                        QMessageBox.warning(self, "CASE", "Укажите значение для сравнения.")
-                        return
-                    v = wval if _is_number(wval) else _sql_quote(wval)
-                    cond = f"{_id_quote(col)} {op} {v}"
-            else:
-                cond = f"{_id_quote(col)} {op}"
-            when_sql += cond
-            tv = tval if _is_number(tval) else _sql_quote(tval)
-            when_sql += f" THEN {tv}"
-            self.caseWhenList.addItem(when_sql)
-            self.edThenVal.clear(); self.edWhenVal.clear()
-        except Exception as e:
-            print("Ошибка _add_case_when:", e)
+            
+            self.cte_list_data.append((name, sql))
+            self.listCTE.addItem(f"{name} AS (...)")
+            QMessageBox.information(self, "CTE", f"CTE '{name}' добавлен. Теперь вы можете очистить форму и использовать его.")
+            # Добавляем CTE в списки таблиц
+            self.cbTable.addItem(f"CTE: {name}", ("CTE", name))
 
-    def _del_case_when(self):
-        for it in self.caseWhenList.selectedItems():
-            self.caseWhenList.takeItem(self.caseWhenList.row(it))
+    def _delete_cte(self):
+        row = self.listCTE.currentRow()
+        if row >= 0:
+            self.cte_list_data.pop(row)
+            self.listCTE.takeItem(row)
 
-    def _build_case_sql(self) -> str:
-        alias = self.edCaseAlias.text().strip()
+    def _clear_ctes(self):
+        self.cte_list_data = []
+        self.listCTE.clear()
+
+    # ----------------------------------------------------------------------
+    # LOGIC HELPERS
+    # ----------------------------------------------------------------------
+
+    def _add_select_agg(self):
+        func = self.cbSelAggFunc.currentText().strip()
+        col = self.cbSelAggCol.currentText().strip()
+        is_dist = self.cbSelAggDistinct.isChecked()
+        alias = self.edSelAggAlias.text().strip()
+        
+        inner = f"DISTINCT {_id_quote(col)}" if is_dist else (f"{_id_quote(col)}" if col != "*" else "*")
+        expr = f"{func}({inner})"
+        if alias: expr += f" AS {_id_quote(alias)}"
+        self.selAggList.addItem(expr)
+
+    def _del_select_agg(self):
+        for i in self.selAggList.selectedItems():
+            self.selAggList.takeItem(self.selAggList.row(i))
+
+    def _add_having(self):
+        func = self.cbHavingFunc.currentText().strip()
+        col = self.cbHavingColumn.currentText().strip()
+        op = self.cbHavingOp.currentText().strip()
+        val = self.edHavingValue.text().strip()
+        
+        col_expr = "*" if col == "*" else _id_quote(col)
+        expr = f"{func}({col_expr}) {op} {val}" # Упрощенная сборка
+        self.havingList.addItem(expr)
+
+    def _del_having(self):
+        for i in self.havingList.selectedItems():
+            self.havingList.takeItem(self.havingList.row(i))
+
+    # --- Subqueries ---
+    def _toggle_sub_ui(self):
+        kind = self.cbSubKind.currentText()
+        is_any_all = "ANY/ALL" in kind
+        self.cbLeftCol.setEnabled(is_any_all)
+        self.cbCmpOp.setEnabled(is_any_all)
+        self.cbQuantifier.setEnabled(is_any_all)
+
+    def _add_corr(self):
+        o = self.cbCorrOuter.currentText()
+        i = self.cbCorrInner.currentText()
+        if o and i: self.corrList.addItem(f"{_id_quote(o)} = sq.{_id_quote(i)}")
+
+    def _del_corr(self):
+        for i in self.corrList.selectedItems(): self.corrList.takeItem(self.corrList.row(i))
+
+    def _add_subfilter(self):
+        kind = self.cbSubKind.currentText()
+        s, t = self.cbInnerTable.currentData()
+        inner_from = f"{s}.{t}"
+        corrs = [self.corrList.item(k).text() for k in range(self.corrList.count())]
+        where_clause = ("WHERE " + " AND ".join(corrs)) if corrs else ""
+        
+        sub_sql = ""
+        if "EXISTS" in kind:
+            sub_sql = f"{kind} (SELECT 1 FROM {inner_from} AS sq {where_clause})"
+        else:
+            left = self.cbLeftCol.currentText()
+            op = self.cbCmpOp.currentText()
+            q = self.cbQuantifier.currentText()
+            inner_col = self.cbInnerCol.currentText()
+            sub_sql = f"{_id_quote(left)} {op} {q} (SELECT {_id_quote(inner_col)} FROM {inner_from} AS sq {where_clause})"
+        
+        self.subFilterList.addItem(sub_sql)
+
+    def _del_subfilter(self):
+        for i in self.subFilterList.selectedItems(): self.subFilterList.takeItem(self.subFilterList.row(i))
+
+    # --- Expressions ---
+    def _add_case_when(self):
+        c = self.cbWhenCol.currentText()
+        op = self.cbWhenOp.currentText()
+        v = self.edWhenVal.text()
+        t = self.edThenVal.text()
+        if t:
+            self.caseWhenList.addItem(f"WHEN {_id_quote(c)} {op} {v} THEN {t}")
+
+    def _add_case_expr(self):
+        if self.caseWhenList.count() == 0: return
         parts = ["CASE"]
         for i in range(self.caseWhenList.count()):
             parts.append(self.caseWhenList.item(i).text())
-        else_val = self.edElseVal.text().strip()
-        if else_val:
-            ev = else_val if _is_number(else_val) else _sql_quote(else_val)
-            parts.append(f"ELSE {ev}")
+        else_val = self.edElseVal.text()
+        if else_val: parts.append(f"ELSE {else_val}")
         parts.append("END")
-        expr = " ".join(parts)
-        if alias:
-            expr += f" AS {_id_quote(alias)}"
-        return expr
-
-    def _add_case_expr(self):
-        try:
-            if self.caseWhenList.count() == 0:
-                QMessageBox.warning(self, "CASE", "Добавьте хотя бы одну пару WHEN-THEN.")
-                return
-            expr = self._build_case_sql()
-            self.exprList.addItem(expr)
-        except Exception as e:
-            QMessageBox.critical(self, "CASE", str(e))
-
-    def _add_coalesce_expr(self):
-        col = self.cbCoalCol.currentText().strip()
-        val = (self.edCoalVal.text() or "").strip()
-        if not col or not val:
-            QMessageBox.warning(self, "COALESCE", "Укажите столбец и подстановку.")
-            return
-        v = val if _is_number(val) else _sql_quote(val)
-        self.exprList.addItem(f"COALESCE({_id_quote(col)}, {v})")
-        self.edCoalVal.clear()
-
-    def _add_nullif_expr(self):
-        col = self.cbNullifCol.currentText().strip()
-        val = (self.edNullifVal.text() or "").strip()
-        if not col or not val:
-            QMessageBox.warning(self, "NULLIF", "Укажите столбец и значение для сравнения.")
-            return
-        v = val if _is_number(val) else _sql_quote(val)
-        self.exprList.addItem(f"NULLIF({_id_quote(col)}, {v})")
-        self.edNullifVal.clear()
+        
+        full = " ".join(parts)
+        alias = self.edCaseAlias.text()
+        if alias: full += f" AS {_id_quote(alias)}"
+        self.exprList.addItem(full)
+        self.caseWhenList.clear()
 
     def _del_expr(self):
-        for it in self.exprList.selectedItems():
-            self.exprList.takeItem(self.exprList.row(it))
+        for i in self.exprList.selectedItems(): self.exprList.takeItem(self.exprList.row(i))
 
+    # ----------------------------------------------------------------------
+    # SQL GENERATION
+    # ----------------------------------------------------------------------
 
-    # === HAVING builder ===
-    def _add_having(self):
-        try:
-            func = self.cbHavingFunc.currentText().strip()
-            col  = self.cbHavingColumn.currentText().strip()
-            op   = self.cbHavingOp.currentText().strip()
-            val  = self.edHavingValue.text().strip()
+    def _generate_select_sql_string(self):
+        """Builds the SELECT part (without CTEs prepended)"""
+        s, t = self.cbTable.currentData() or (None, None)
+        if not s and not t:
+            # Проверка на CTE как источник
+            txt = self.cbTable.currentText()
+            if txt.startswith("CTE: "):
+                s, t = "CTE", txt.replace("CTE: ", "")
+            else:
+                return None
 
-            if col == "*" and func != "COUNT":
-                QMessageBox.warning(self, "HAVING", "Звёздочка (*) допустима только с COUNT.")
-                return
+        # Columns - ВЕРНУЛИ ЧТЕНИЕ ВЫДЕЛЕННЫХ ЭЛЕМЕНТОВ (не чекбоксов)
+        sel_cols = [item.text() for item in self.colsList.selectedItems()]
+        sel_cols_quoted = [_id_quote(c) for c in sel_cols]
+        
+        aggs = [self.selAggList.item(i).text() for i in range(self.selAggList.count())]
+        exprs = [self.exprList.item(i).text() for i in range(self.exprList.count())]
+        
+        all_cols = sel_cols_quoted + aggs + exprs
+        if not all_cols: all_cols = ["*"]
+        
+        select_clause = f"SELECT {', '.join(all_cols)}"
+        
+        # FROM
+        from_clause = f"FROM {t}" if s == "CTE" else f"FROM {s}.{t}"
+        
+        # WHERE
+        wheres = []
+        w_man = self.edWhere.text().strip()
+        if w_man: wheres.append(f"({w_man})")
+        for i in range(self.subFilterList.count()):
+            wheres.append(f"({self.subFilterList.item(i).text()})")
+            
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
 
-            col_expr = "*" if col == "*" else _id_quote(col)
-            expr = f"{func}({col_expr}) {op}"
+        # GROUP BY
+        group_clause = ""
+        g_type = self.cbGroupType.currentText()
+        
+        # Получаем список отмеченных для группировки колонок
+        # Тут тоже читаем selectedItems() т.к. стиль вернули
+        g_cols = [item.text() for item in self.listGroupCols.selectedItems()]
+        g_cols_quoted = [_id_quote(c) for c in g_cols]
 
-            if op in _CMP_OPS_WITH_VALUE:
-                if op.endswith("IN"):
-                    if not val:
-                        QMessageBox.warning(self, "HAVING", "Для IN укажите список значений (через запятую).")
-                        return
-                    parts = [p.strip() for p in val.split(',') if p.strip()]
-                    if not parts:
-                        QMessageBox.warning(self, "HAVING", "Список для IN пуст.")
-                        return
-                    norm = [p if _is_number(p) else _sql_quote(p) for p in parts]
-                    expr += " (" + ", ".join(norm) + ")"
-                elif op.endswith("BETWEEN"):
-                    m = re.match(r"(.+)\\s+AND\\s+(.+)", val, flags=re.I)
-                    if not m:
-                        QMessageBox.warning(self, "HAVING", "Для BETWEEN укажите: a AND b")
-                        return
-                    a, b = m.group(1).strip(), m.group(2).strip()
-                    a = a if _is_number(a) else _sql_quote(a)
-                    b = b if _is_number(b) else _sql_quote(b)
-                    expr += f" {a} AND {b}"
-                else:
-                    if not val:
-                        QMessageBox.warning(self, "HAVING", "Укажите значение для сравнения.")
-                        return
-                    v = val if _is_number(val) else _sql_quote(val)
-                    expr += f" {v}"
+        if "Simple" in g_type: # Auto or Explicit Simple
+            if not g_cols and "Авто" in g_type and aggs:
+                # Fallback to logic: group by all non-agg selected
+                g_cols_quoted = sel_cols_quoted
+            
+            if g_cols_quoted:
+                group_clause = "GROUP BY " + ", ".join(g_cols_quoted)
 
-            self.havingList.addItem(expr)
-            self._sync_having_text()
-        except Exception as e:
-            print("Ошибка в _add_having:", e)
-            traceback.print_exc()
+        elif g_type in ["ROLLUP", "CUBE"]:
+            if g_cols_quoted:
+                group_clause = f"GROUP BY {g_type} (" + ", ".join(g_cols_quoted) + ")"
+        
+        elif g_type == "GROUPING SETS":
+            # Упрощенная реализация: каждая колонка - отдельный сет, плюс общий
+            if g_cols_quoted:
+                sets = [f"({c})" for c in g_cols_quoted]
+                sets.append("()") # Grand total
+                group_clause = f"GROUP BY GROUPING SETS ({', '.join(sets)})"
 
-    def _del_having(self):
-        for it in self.havingList.selectedItems():
-            row = self.havingList.row(it)
-            self.havingList.takeItem(row)
-        self._sync_having_text()
+        # HAVING
+        havs = [self.havingList.item(i).text() for i in range(self.havingList.count())]
+        having_clause = ("HAVING " + " AND ".join(havs)) if havs else ""
 
-    def _sync_having_text(self):
-        clauses = [self.havingList.item(i).text() for i in range(self.havingList.count())]
-        self.edHaving.setText(" AND ".join(clauses))
+        # ORDER
+        ord_txt = self.edOrder.text().strip()
+        order_clause = f"ORDER BY {ord_txt}" if ord_txt else ""
 
-    # === Подзапросы (ANY/ALL/EXISTS) ===
-    def _add_corr(self):
-        outer_col = self.cbCorrOuter.currentText().strip()
-        inner_col = self.cbCorrInner.currentText().strip()
-        if not outer_col or not inner_col:
+        parts = [select_clause, from_clause, where_clause, group_clause, having_clause, order_clause]
+        return "\n".join([p for p in parts if p])
+
+    def _gen_sql_ui(self):
+        main_sql = self._generate_select_sql_string()
+        if not main_sql:
+            QMessageBox.warning(self, "Ошибка", "Не выбрана таблица или столбцы")
             return
-        self.corrList.addItem(f"{_id_quote(outer_col)} = sq.{_id_quote(inner_col)}")
 
-    def _del_corr(self):
-        for it in self.corrList.selectedItems():
-            self.corrList.takeItem(self.corrList.row(it))
-
-    def _suggest_corr(self):
-        try:
-            s1, t1 = self.cbTable.currentData()
-            s2, t2 = self.cbInnerTable.currentData()
-            pairs = db.list_fk_pairs(self.schema, t1, t2)
-            if not pairs:
-                QMessageBox.information(self, "Связи", "FK-отношения между таблицами не найдены.")
-                return
-            for left_col, right_col in pairs:
-                self.corrList.addItem(f"{_id_quote(left_col)} = sq.{_id_quote(right_col)}")
-        except Exception as e:
-            QMessageBox.warning(self, "Связи", f"Не удалось получить связи: {e}")
-
-    def _add_in_where(self):
-        col = self.cbInWhereCol.currentText().strip()
-        op = self.cbInWhereOp.currentText().strip()
-        val = self.edInWhereVal.text().strip()
-        expr = f"sq.{_id_quote(col)} {op}"
-        if op in _CMP_OPS_WITH_VALUE:
-            if op.endswith("IN"):
-                if not val:
-                    QMessageBox.warning(self, "Подзапрос: WHERE", "Для IN укажите список значений (a,b,c)")
-                    return
-                parts = [p.strip() for p in val.split(',') if p.strip()]
-                norm = [p if _is_number(p) else _sql_quote(p) for p in parts]
-                expr += " (" + ", ".join(norm) + ")"
-            elif op.endswith("BETWEEN"):
-                m = re.match(r"(.+)\\s+AND\\s+(.+)", val, flags=re.I)
-                if not m:
-                    QMessageBox.warning(self, "Подзапрос: WHERE", "Для BETWEEN укажите: a AND b")
-                    return
-                a, b = m.group(1).strip(), m.group(2).strip()
-                a = a if _is_number(a) else _sql_quote(a)
-                b = b if _is_number(b) else _sql_quote(b)
-                expr += f" {a} AND {b}"
-            else:
-                if not val:
-                    QMessageBox.warning(self, "Подзапрос: WHERE", "Укажите значение для сравнения")
-                    return
-                v = val if _is_number(val) else _sql_quote(val)
-                expr += f" {v}"
-        self.inWhereList.addItem(expr)
-
-    def _del_in_where(self):
-        for it in self.inWhereList.selectedItems():
-            self.inWhereList.takeItem(self.inWhereList.row(it))
-
-    def _build_subquery_sql(self) -> str:
-        kind = self.cbSubKind.currentText()
-        s2, t2 = self.cbInnerTable.currentData()
-        inner_from = f"{s2}.{t2}"
-        # correlation + локальный WHERE
-        corr = [self.corrList.item(i).text() for i in range(self.corrList.count())]
-        inwhere = [self.inWhereList.item(i).text() for i in range(self.inWhereList.count())]
-        where_parts = []
-        if corr:
-            where_parts.append(" AND ".join(corr))
-        if inwhere:
-            where_parts.append(" AND ".join(inwhere))
-        inner_where = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
-        if kind in ("EXISTS", "NOT EXISTS"):
-            return f"{kind} (SELECT 1 FROM {inner_from} AS sq{inner_where})"
-        # ANY/ALL
-        left_col = self.cbLeftCol.currentText().strip()
-        op = self.cbCmpOp.currentText().strip()
-        qty = self.cbQuantifier.currentText().strip()
-        inner_col = self.cbInnerCol.currentText().strip()
-        sub = f"SELECT {_id_quote(inner_col)} FROM {inner_from} AS sq{inner_where}"
-        return f"{_id_quote(left_col)} {op} {qty} ({sub})"
-
-    def _add_subfilter(self):
-        try:
-            expr = self._build_subquery_sql()
-            self.subFilterList.addItem(expr)
-        except Exception as e:
-            QMessageBox.critical(self, "Подзапрос", str(e))
-
-    def _del_subfilter(self):
-        for it in self.subFilterList.selectedItems():
-            self.subFilterList.takeItem(self.subFilterList.row(it))
-
-    def subFilterStrings(self):
-        return [self.subFilterList.item(i).text() for i in range(self.subFilterList.count())]
-
-    # === SELECT агрегаты ===
-    def _add_select_agg(self):
-        try:
-            func = self.cbSelAggFunc.currentText().strip()
-            col  = self.cbSelAggCol.currentText().strip()
-            distinct = self.cbSelAggDistinct.isChecked()
-            alias = self.edSelAggAlias.text().strip()
-
-            if col == "*" and func != "COUNT":
-                QMessageBox.warning(self, "SELECT агрегаты", "Звёздочка (*) допустима только с COUNT.")
-                return
-            if col == "*" and distinct:
-                QMessageBox.warning(self, "SELECT агрегаты", "DISTINCT с * недопустим.")
-                return
-
-            col_expr = "*" if col == "*" else _id_quote(col)
-            inner = f"DISTINCT {col_expr}" if distinct else col_expr
-            expr = f"{func}({inner})"
-            if alias:
-                expr = f"{expr} AS {_id_quote(alias)}"
-
-            self.selAggList.addItem(expr)
-            self.edSelAggAlias.clear()
-        except Exception as e:
-            print("Ошибка в _add_select_agg:", e)
-            traceback.print_exc()
-
-    def _del_select_agg(self):
-        for it in self.selAggList.selectedItems():
-            row = self.selAggList.row(it)
-            self.selAggList.takeItem(row)
-
-    # === SQL generation / run ===
-    def _gen_sql(self):
-        try:
-            s,t = self.cbTable.currentData() or (None, None)
-            if s is None:
-                QMessageBox.warning(self, "SELECT", "Выберите таблицу.")
-                return
-
-            # Неагрегированные поля
-            nonagg_cols = [i.text() for i in self.colsList.selectedItems()]
-            nonagg_sql  = [_id_quote(c) for c in nonagg_cols]
-
-            # Агрегаты из списка
-            agg_sql = [self.selAggList.item(i).text() for i in range(self.selAggList.count())]
-
-            # Пользовательские выражения (CASE/COALESCE/NULLIF)
-            expr_sql = [self.exprList.item(i).text() for i in range(self.exprList.count())]
-
-            # Если вообще ничего не выбрано - ставим *
-            select_items = (nonagg_sql + agg_sql + expr_sql) if (nonagg_sql or agg_sql or expr_sql) else ["*"]
-            cols_sql = ", ".join(select_items)
-
-            # WHERE: объединяем ручной и авто-подзапросы
-            manual_where = self.edWhere.text().strip()
-            sub_where = " AND ".join(self.subFilterStrings())
-            if manual_where and sub_where:
-                where_txt = f"({manual_where}) AND ({sub_where})"
-            else:
-                where_txt = manual_where or sub_where
-
-            group_txt  = self.edGroup.text().strip()
-            having_txt = self.edHaving.text().strip()
-            order_txt  = self.edOrder.text().strip()
-
-            parts = [f"SELECT {cols_sql} FROM {s}.{t}"]
-            if where_txt:
-                parts.append("WHERE " + where_txt)
-
-            # Авто-GROUP BY
-            has_aggregates = len(agg_sql) > 0
-            if self.cbAutoGroup.isChecked():
-                need_group = has_aggregates or bool(having_txt)
-                if need_group and not group_txt:
-                    if nonagg_sql:
-                        group_txt = ", ".join(nonagg_sql)
-                    else:
-                        group_txt = ""  # только агрегаты
-
-            if group_txt:
-                parts.append("GROUP BY " + group_txt)
-            if having_txt:
-                parts.append("HAVING " + having_txt)
-            if order_txt:
-                parts.append("ORDER BY " + order_txt)
-
-            self.sqlView.setPlainText("\n".join(parts))
-        except Exception as e:
-            print("Ошибка в _gen_sql:", e)
-            traceback.print_exc()
+        final_sql = ""
+        # Prepend CTEs
+        if self.cte_list_data:
+            cte_parts = []
+            for name, body in self.cte_list_data:
+                cte_parts.append(f"{name} AS (\n{body}\n)")
+            final_sql += "WITH " + ",\n".join(cte_parts) + "\n"
+        
+        final_sql += main_sql
+        self.sqlView.setPlainText(final_sql)
 
     def _run_sql(self):
+        sql = self.sqlView.toPlainText()
+        if not sql: return
         try:
-            sql = self.sqlView.toPlainText().strip()
-            if not sql.lower().startswith("select"):
-                QMessageBox.warning(self, "SELECT", "Разрешён только SELECT")
-                return
-            try:
-                cols, rows = db.preview(sql, limit=500)
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка SELECT", f"Ошибка при выполнении запроса: {e}")
-                return
-            self.tbl.setColumnCount(len(cols)); self.tbl.setHorizontalHeaderLabels(cols)
+            cols, rows = db.preview(sql)
+            self.tbl.setColumnCount(len(cols))
             self.tbl.setRowCount(len(rows))
-            for r,row in enumerate(rows):
-                for c,v in enumerate(row):
-                    self.tbl.setItem(r,c, QTableWidgetItem("" if v is None else str(v)))
+            self.tbl.setHorizontalHeaderLabels(cols)
+            for r, row in enumerate(rows):
+                for c, val in enumerate(row):
+                    self.tbl.setItem(r, c, QTableWidgetItem(str(val)))
         except Exception as e:
-            print("Ошибка в _run_sql:", e)
-            traceback.print_exc()
+            QMessageBox.critical(self, "Ошибка SQL", str(e))
+
+    def _create_view_handler(self, is_mat):
+        sql = self.sqlView.toPlainText()
+        if not sql:
+            QMessageBox.warning(self, "Ошибка", "Сначала сгенерируйте SQL.")
+            return
+
+        type_str = "MATERIALIZED VIEW" if is_mat else "VIEW"
+        name, ok = QInputDialog.getText(self, f"Создание {type_str}", "Введите имя представления:")
+        if ok and name:
+            if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+                QMessageBox.warning(self, "Ошибка", "Некорректное имя.")
+                return
+            
+            try:
+                db.create_view_from_select(self.schema, name, sql, is_mat)
+                QMessageBox.information(self, "Успех", f"{type_str} '{name}' успешно создано.")
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка БД", f"Не удалось создать представление:\n{e}")

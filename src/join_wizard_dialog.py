@@ -94,7 +94,7 @@ class JoinWizardDialog(QDialog):
                                border: 1px solid rgba(46, 82, 110, 255);
                                border-radius: 4px;
                                gridline-color: rgba(46, 82, 110, 150);
-                               font-size: 12px;
+                               font-size: 22px;
                            }
                            QTableWidget::item {
                                background-color: transparent;
@@ -231,6 +231,7 @@ class JoinWizardDialog(QDialog):
         L.addWidget(QLabel("Столбцы в результате:"))
         self.colsList = QListWidget(); self.colsList.setSelectionMode(self.colsList.MultiSelection)
         L.addWidget(self.colsList,2)
+        self.colsList.setFocusPolicy(Qt.NoFocus)
 
         self.sqlView = QTextEdit(); self.sqlView.setReadOnly(False)
         self.btnGen = QPushButton("Сгенерировать SQL")
@@ -243,6 +244,7 @@ class JoinWizardDialog(QDialog):
         self.btnRun.clicked.connect(self._run_sql)
 
         self._reload_pairs()
+
 
     def _reload_pairs(self):
         lt = self.cbLeft.currentText()

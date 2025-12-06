@@ -54,6 +54,14 @@ def sqlstate_message(exc: Exception) -> str:
         return SQLSTATE_MAP[code]
     return str(exc)
 
+def run_cmd(sql: str, params: tuple | list = ()):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if DB_LOG_SQL_PREVIEW:
+                logger.info("CMD: %s params=%s", sql[:100], params)
+            cur.execute(sql, params)
+        conn.commit()
+
 def _resolve_sql_path(filename: str) -> Path:
     """
     Ищем SQL рядом с модулем
@@ -107,6 +115,75 @@ def table_exists(schema: str, table: str) -> bool:
         with conn.cursor() as cur:
             cur.execute(sql, (schema, table))
             return cur.fetchone() is not None
+
+
+def list_views(schema: str):
+    """Список обычных представлений"""
+    sql = """
+          SELECT relname
+          FROM pg_class c
+                   JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = %s \
+            AND c.relkind = 'v'
+          ORDER BY relname \
+          """
+    _, rows = run_select(sql, (schema,))
+    return [r[0] for r in rows]
+
+
+def list_mat_views(schema: str):
+    """Список материализованных представлений"""
+    sql = """
+          SELECT relname
+          FROM pg_class c
+                   JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = %s \
+            AND c.relkind = 'm'
+          ORDER BY relname \
+          """
+    _, rows = run_select(sql, (schema,))
+    return [r[0] for r in rows]
+
+
+def get_view_def(schema: str, view_name: str, materialized: bool = False) -> str:
+    """Получить SQL-код (DDL) представления"""
+    # pg_get_viewdef возвращает тело запроса.
+    # Для полного DDL нужно добавить CREATE VIEW ...
+    sql = "SELECT pg_get_viewdef(%s::regclass, true)"
+    full_name = f"{schema}.{view_name}"
+    _, rows = run_select(sql, (full_name,))
+    if rows and rows[0][0]:
+        kind = "MATERIALIZED VIEW" if materialized else "VIEW"
+        return f"CREATE OR REPLACE {kind} {full_name} AS\n{rows[0][0]}"
+    return "-- Definition not found"
+
+
+def drop_view(schema: str, view_name: str, materialized: bool = False):
+    kind = "MATERIALIZED VIEW" if materialized else "VIEW"
+    sql = f"DROP {kind} IF EXISTS {schema}.\"{view_name}\" CASCADE"
+    run_cmd(sql)
+
+
+def refresh_mat_view(schema: str, view_name: str):
+    sql = f"REFRESH MATERIALIZED VIEW {schema}.\"{view_name}\""
+    run_cmd(sql)
+
+
+def create_view_from_select(schema: str, view_name: str, select_sql: str, materialized: bool = False):
+    """Создает представление на основе сгенерированного SQL"""
+    kind = "MATERIALIZED VIEW" if materialized else "VIEW"
+    # Для Mat View нельзя использовать OR REPLACE, поэтому сначала удаляем (или используем IF NOT EXISTS логику в приложении)
+    # Но обычно CREATE OR REPLACE работает только для VIEW. Для MAT VIEW нужно DROP + CREATE.
+
+    full_name = f"{schema}.\"{view_name}\""
+
+    if materialized:
+        # Для мат. вью удаляем старую версию (осторожно, данные теряются)
+        run_cmd(f"DROP MATERIALIZED VIEW IF EXISTS {full_name} CASCADE")
+        sql = f"CREATE MATERIALIZED VIEW {full_name} AS {select_sql}"
+    else:
+        sql = f"CREATE OR REPLACE VIEW {full_name} AS {select_sql}"
+        run_cmd(sql)
 
 # НЕУЯЗВИМОЕ БАГОПРОТИВЯЩЕЕСЯ ОШИБКОНЕВОЗМОЖНОЕ извлечение SQL
 _DOLLAR_TAG = re.compile(r"\$[A-Za-z0-9_]*\$")

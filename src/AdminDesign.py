@@ -116,11 +116,17 @@ class Ui_Form(object):
         self.btnTextSearch.setObjectName("btnTextSearch")
         self.gridLayout_buttons.addWidget(self.btnTextSearch, 1, 3)
 
+        self.btnManager = QtWidgets.QPushButton(self.buttons_container)
+        self.btnManager.setMinimumSize(QtCore.QSize(0, 40))
+        self.btnManager.setStyleSheet(button_style)
+        self.btnManager.setObjectName("btnTextSearch")
+        self.gridLayout_buttons.addWidget(self.btnManager, 2, 0)
+
         self.btnBackMain = QtWidgets.QPushButton(self.buttons_container)
         self.btnBackMain.setMinimumSize(QtCore.QSize(0, 40))
         self.btnBackMain.setStyleSheet(button_style)  # Такая же стилизация как у остальных
         self.btnBackMain.setObjectName("btnBackMain")
-        self.gridLayout_buttons.addWidget(self.btnBackMain, 2, 0)
+        self.gridLayout_buttons.addWidget(self.btnBackMain, 2, 1)
 
         # Добавляем контейнер кнопок в главный layout
         self.verticalLayout_main.addWidget(self.buttons_container)
@@ -155,4 +161,5 @@ class Ui_Form(object):
         self.btnMasterJoin.setText(_translate("Form", "Мастер соединений"))
         self.btnUserTypes.setText(_translate("Form", "Пользовательские типы"))
         self.btnTextSearch.setText(_translate("Form", "Поиск по строкам"))
+        self.btnManager.setText(_translate("Form", "View"))
         self.btnBackMain.setText(_translate("Form", "Главное меню"))

@@ -374,6 +374,9 @@ class StringFuncsDialog(QDialog):
             self.edP2.setPlaceholderText("Длина (целое, опц.)")
             self.edP1.setValidator(self._int_validator)
             self.edP2.setValidator(self._int_validator)
+            num_validator = QIntValidator(1, 100, self)
+            self.edP1.setValidator(num_validator)
+            self.edP2.setValidator(num_validator)
 
         elif func.startswith("LPAD") or func.startswith("RPAD"):
             # Нужен П1 (обязательный, целое), П2 — опционально (строка)
@@ -382,6 +385,9 @@ class StringFuncsDialog(QDialog):
             self.edP1.setPlaceholderText("Длина (целое, обяз.)")
             self.edP2.setPlaceholderText("Заполнитель (строка, опц.)")
             self.edP1.setValidator(self._int_validator)
+            num_validator = QIntValidator(1, 100, self)
+            self.edP1.setValidator(num_validator)
+
 
         elif func.startswith("CONCAT") or func.startswith("col ||"):
             # Нужен только П1 (строка)
@@ -452,11 +458,16 @@ class StringFuncsDialog(QDialog):
         p2_raw = self.edP2.text().strip()
 
         # Утилита приведения типов
-        def _to_int_or_error(raw: str, message: str) -> int:
+        def _to_int_or_error(raw: str, field_name: str) -> int:
             try:
-                return int(raw)
-            except ValueError:
-                raise ValueError(message)
+                value = int(raw)
+                if value < 1 or value > 100:
+                    raise ValueError(f"{field_name} должен быть от 1 до 100")
+                return value
+            except ValueError as e:
+                if "от" in str(e):
+                    raise e
+                raise ValueError(f"{field_name} должен быть целым числом")
 
         # Базовый expr
         expr = FUNCS[func].format(col=col)

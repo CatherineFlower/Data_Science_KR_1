@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS app.tracked_domain (
   CONSTRAINT fk_tracked_domain_user
     FOREIGN KEY (user_id) REFERENCES app.app_user(id) ON DELETE CASCADE,
   CONSTRAINT uq_user_domain UNIQUE (user_id, domain),
-  CONSTRAINT chk_domain_format CHECK (domain ~ '^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$')
+  CONSTRAINT chk_domain_format CHECK (
+    domain ~* '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$'
+)
 );
 CREATE INDEX IF NOT EXISTS idx_tracked_domain_domain ON app.tracked_domain (lower(domain));
 CREATE INDEX IF NOT EXISTS idx_tracked_domain_state  ON app.tracked_domain (current_state);
