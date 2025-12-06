@@ -11,265 +11,64 @@ class ViewsManagerDialog(QDialog):
         self.schema = schema
         self.setWindowTitle("Менеджер представлений (Views)")
         self.setMinimumSize(1000, 700)
-        self.setStyleSheet(parent.styleSheet() if parent else "")  # Наследуем стиль, если возможно
+        self.setStyleSheet(parent.styleSheet() if parent else "")
 
         self.layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
         self.layout.addWidget(self.tabs)
+        
+        # Стили оставлены без изменений для краткости
         self.setStyleSheet("""
-                        QDialog {
-                            background-color: rgba(16, 30, 41, 240);
-                            color: white;
-                        }
-                        QLabel {
-                            color: white;
-                            font-size: 18px;
-                            padding: 8px;
-                            font-weight: bold;
-                        }
-                        QComboBox {
-                            background-color: rgba(25, 45, 60, 200);
-                            color: white;
-                            border: 1px solid rgba(46, 82, 110, 255);
-                            border-radius: 4px;
-                            padding: 12px;    
-                            min-height: 40px;  
-                            font-size: 24px;   
-                        }
-                        QComboBox:hover {
-                            border: 1px solid rgba(66, 122, 160, 255);
-                        }
-                        QComboBox::drop-down {
-                            border: none;
-                            width: 30px;
-                        }
-                        QComboBox::down-arrow {
-                            image: none;
-                            border-left: 6px solid transparent;
-                            border-right: 6px solid transparent;
-                            border-top: 6px solid white;
-                            margin-right: 10px;
-                        }
-                        QComboBox QAbstractItemView {
-                            background-color: rgba(25, 45, 60, 255);
-                            color: white;
-                            border: 1px solid rgba(46, 82, 110, 255);
-                            selection-background-color: rgba(2, 65, 118, 255);
-                            font-size: 14px;
-                            padding: 12px;
-                            outline: none;
-                        }
-                        QComboBox QAbstractItemView::item {
-                            min-height: 30px;  
-                            padding: 8px;      
-                        }
-                        QLineEdit {
-                            background-color: rgba(25, 45, 60, 200);
-                            color: white;
-                            border: 1px solid rgba(46, 82, 110, 255);
-                            border-radius: 4px;
-                            padding: 10px;
-                            font-size: 13px;
-                            min-height: 20px;
-                            font-weight: bold;
-                        }
-                        QLineEdit:focus {
-                            border: 1px solid rgba(66, 122, 160, 255);
-                        }
-                        /* Стиль для невалидного ввода */
-                        QLineEdit:invalid {
-                            border: 2px solid rgba(200, 80, 80, 255);
-                        }
-                        QLineEdit::placeholder {
-                            color: rgba(200, 200, 200, 150);
-                            font-size: 12px;
-                            font-weight: bold;
-                        }
-                        QTextEdit {
-                            background-color: rgba(25, 45, 60, 200);
-                            color: white;
-                            border: 1px solid rgba(46, 82, 110, 255);
-                            border-radius: 4px;
-                            padding: 10px;
-                            font-size: 18px;
-                            font-family: 'Courier New', monospace;
-                            font-weight: bold;
-                        }
-                        QTextEdit:focus {
-                            border: 1px solid rgba(66, 122, 160, 255);
-                        }
-                        QTableWidget {
-                            background-color: rgba(25, 45, 60, 200);
-                            color: white;
-                            border: 1px solid rgba(46, 82, 110, 255);
-                            border-radius: 4px;
-                            gridline-color: rgba(46, 82, 110, 150);
-                            font-size: 22px;
-                            font-weight: bold;
-                            outline: none;
-                        }
-                        QTableWidget::item {
-                            background-color: transparent;
-                            color: white;
-                            border-bottom: 1px solid rgba(46, 82, 110, 100);
-                            padding: 8px;
-                            font-weight: bold;
-                        }
-                        QTableWidget::item:selected {
-                            background-color: rgba(2, 65, 118, 200);
-                            color: white;
-                        }
-                        QTableWidget::item:hover {
-                            background-color: rgba(45, 65, 85, 200);
-                        }
-                        QHeaderView::section {
-                            background-color: rgba(2, 65, 118, 255);
-                            color: white;
-                            border: none;
-                            padding: 8px;
-                            font-weight: bold;
-                            font-size: 13px;
-                            border-right: 1px solid rgba(46, 82, 110, 255);
-                            border-bottom: 1px solid rgba(46, 82, 110, 255);
-                        }
-                        QHeaderView::section:last {
-                            border-right: none;
-                        }
-                        QHeaderView::section:hover {
-                            background-color: rgba(2, 65, 118, 200);
-                        }
-                        QHeaderView::section:pressed {
-                            background-color: rgba(2, 65, 118, 100);
-                        }
-                        QListWidget {
-                            background-color: rgba(25, 45, 60, 200);
-                            color: white;
-                            border: 1px solid rgba(46, 82, 110, 255);
-                            border-radius: 4px;
-                            font-size: 20px;
-                            font-weight: bold;
-                            outline: none;
-                        }
-                        QListWidget::item {
-                            padding: 8px;
-                            border-bottom: 1px solid rgba(46, 82, 110, 100);
-                        }
-                        QListWidget::item:selected {
-                            background-color: rgba(2, 65, 118, 255);
-                            color: white;
-                        }
-                        QListWidget::item:hover {
-                            background-color: rgba(35, 55, 75, 200);
-                        }
-                        QPushButton {
-                            background-color: rgba(2, 65, 118, 255);
-                            color: rgba(255, 255, 255, 200);
-                            border-radius: 5px;
-                            padding: 12px;
-                            min-height: 40px;
-                            min-width: 120px;
-                            font-size: 13px;
-                            font-weight: bold;
-                        }
-                        QPushButton:hover {
-                            background-color: rgba(2, 65, 118, 200);
-                        }
-                        QPushButton:pressed {
-                            background-color: rgba(2, 65, 118, 100);
-                        }
-                        QScrollBar:vertical {
-                            border: none;
-                            background-color: rgba(25, 45, 60, 200);
-                            width: 12px;
-                            margin: 0px;
-                        }
-                        QScrollBar::handle:vertical {
-                            background-color: rgba(46, 82, 110, 150);
-                            border-radius: 6px;
-                            min-height: 20px;
-                        }
-                        QScrollBar::handle:vertical:hover {
-                            background-color: rgba(46, 82, 110, 200);
-                        }
-                        QScrollBar:horizontal {
-                            border: none;
-                            background-color: rgba(25, 45, 60, 200);
-                            height: 12px;
-                            margin: 0px;
-                        }
-                        QScrollBar::handle:horizontal {
-                            background-color: rgba(46, 82, 110, 150);
-                            border-radius: 6px;
-                            min-width: 20px;
-                        }
-                        QScrollBar::handle:horizontal:hover {
-                            background-color: rgba(46, 82, 110, 200);
-                        }
-                        QTableView {
-                            background-color: rgba(25, 45, 60, 200);
-                            color: white;
-                            gridline-color: rgba(46, 82, 110, 150);
-                            selection-background-color: rgba(2, 65, 118, 200);
-                            selection-color: white;
-                            outline: none;
-                        }
-                        QTableView::item {
-                            background-color: transparent;
-                            color: white;
-                            border-bottom: 1px solid rgba(46, 82, 110, 100);
-                            padding: 8px;
-                        }
-                        QTableCornerButton::section {
-                            background-color: rgba(2, 65, 110, 255);
-                            border: none;
-                        }
-                        QAbstractScrollArea {
-                            background-color: rgba(25, 45, 60, 200);
-                        }
-                        /* Добавленные стили для вкладок и чекбоксов */
-                        QTabWidget::pane {
-                            border: 1px solid rgba(46, 82, 110, 255);
-                            background-color: rgba(16, 30, 41, 240);
-                        }
-                        QTabBar::tab {
-                            background-color: rgba(25, 45, 60, 200);
-                            color: white;
-                            padding: 16px 24px;
-                            margin-right: 2px;
-                            font-size: 18px;
-                            font-weight: bold;
-                            border: 1px solid rgba(46, 82, 110, 255);
-                            border-bottom: none;
-                            border-top-left-radius: 4px;
-                            border-top-right-radius: 4px;
-                        }
-                        QTabBar::tab:selected {
-                            background-color: rgba(2, 65, 118, 255);
-                            border-color: rgba(66, 122, 160, 255);
-                        }
-                        QTabBar::tab:hover:!selected {
-                            background-color: rgba(2, 65, 118, 150);
-                        }
-                        QCheckBox {
-                            color: white;
-                            font-size: 13px;
-                            spacing: 10px;
-                            font-weight: bold;
-                        }
-                        QCheckBox::indicator {
-                            width: 18px;
-                            height: 18px;
-                            border: 1px solid rgba(46, 82, 110, 255);
-                            border-radius: 3px;
-                            background-color: rgba(25, 45, 60, 200);
-                        }
-                        QCheckBox::indicator:checked {
-                            background-color: rgba(2, 65, 118, 255);
-                        }
-                        QCheckBox::indicator:hover {
-                            border: 1px solid rgba(66, 122, 160, 255);
-                        }
-                    """)
+            QDialog { background-color: rgba(16, 30, 41, 240); color: white; }
+            QLabel { color: white; font-size: 13px; padding: 8px; font-weight: bold; }
+            QComboBox { background-color: rgba(25, 45, 60, 200); color: white; border: 1px solid rgba(46, 82, 110, 255); border-radius: 4px; padding: 12px; min-height: 40px; font-size: 24px; }
+            QComboBox:hover { border: 1px solid rgba(66, 122, 160, 255); }
+            QComboBox::drop-down { border: none; width: 30px; }
+            QComboBox::down-arrow { image: none; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid white; margin-right: 10px; }
+            QComboBox QAbstractItemView { background-color: rgba(25, 45, 60, 255); color: white; border: 1px solid rgba(46, 82, 110, 255); selection-background-color: rgba(2, 65, 118, 255); font-size: 14px; padding: 12px; outline: none; }
+            QComboBox QAbstractItemView::item { min-height: 30px; padding: 8px; }
+            QLineEdit { background-color: rgba(25, 45, 60, 200); color: white; border: 1px solid rgba(46, 82, 110, 255); border-radius: 4px; padding: 10px; font-size: 13px; min-height: 20px; font-weight: bold; }
+            QLineEdit:focus { border: 1px solid rgba(66, 122, 160, 255); }
+            QLineEdit:invalid { border: 2px solid rgba(200, 80, 80, 255); }
+            QLineEdit::placeholder { color: rgba(200, 200, 200, 150); font-size: 12px; font-weight: bold; }
+            QTextEdit { background-color: rgba(25, 45, 60, 200); color: white; border: 1px solid rgba(46, 82, 110, 255); border-radius: 4px; padding: 10px; font-size: 13px; font-family: 'Courier New', monospace; font-weight: bold; }
+            QTextEdit:focus { border: 1px solid rgba(66, 122, 160, 255); }
+            QTableWidget { background-color: rgba(25, 45, 60, 200); color: white; border: 1px solid rgba(46, 82, 110, 255); border-radius: 4px; gridline-color: rgba(46, 82, 110, 150); font-size: 22px; font-weight: bold; outline: none; }
+            QTableWidget::item { background-color: transparent; color: white; border-bottom: 1px solid rgba(46, 82, 110, 100); padding: 8px; font-weight: bold; }
+            QTableWidget::item:selected { background-color: rgba(2, 65, 118, 200); color: white; }
+            QTableWidget::item:hover { background-color: rgba(45, 65, 85, 200); }
+            QHeaderView::section { background-color: rgba(2, 65, 118, 255); color: white; border: none; padding: 8px; font-weight: bold; font-size: 13px; border-right: 1px solid rgba(46, 82, 110, 255); border-bottom: 1px solid rgba(46, 82, 110, 255); }
+            QHeaderView::section:last { border-right: none; }
+            QHeaderView::section:hover { background-color: rgba(2, 65, 118, 200); }
+            QHeaderView::section:pressed { background-color: rgba(2, 65, 118, 100); }
+            QListWidget { background-color: rgba(25, 45, 60, 200); color: white; border: 1px solid rgba(46, 82, 110, 255); border-radius: 4px; font-size: 20px; font-weight: bold; outline: none; }
+            QListWidget::item { padding: 8px; border-bottom: 1px solid rgba(46, 82, 110, 100); }
+            QListWidget::item:selected { background-color: rgba(2, 65, 118, 255); color: white; }
+            QListWidget::item:hover { background-color: rgba(35, 55, 75, 200); }
+            QPushButton { background-color: rgba(2, 65, 118, 255); color: rgba(255, 255, 255, 200); border-radius: 5px; padding: 12px; min-height: 40px; min-width: 120px; font-size: 13px; font-weight: bold; }
+            QPushButton:hover { background-color: rgba(2, 65, 118, 200); }
+            QPushButton:pressed { background-color: rgba(2, 65, 118, 100); }
+            QScrollBar:vertical { border: none; background-color: rgba(25, 45, 60, 200); width: 12px; margin: 0px; }
+            QScrollBar:handle:vertical { background-color: rgba(46, 82, 110, 150); border-radius: 6px; min-height: 20px; }
+            QScrollBar:handle:vertical:hover { background-color: rgba(46, 82, 110, 200); }
+            QScrollBar:horizontal { border: none; background-color: rgba(25, 45, 60, 200); height: 12px; margin: 0px; }
+            QScrollBar:handle:horizontal { background-color: rgba(46, 82, 110, 150); border-radius: 6px; min-width: 20px; }
+            QScrollBar:handle:horizontal:hover { background-color: rgba(46, 82, 110, 200); }
+            QTableView { background-color: rgba(25, 45, 60, 200); color: white; gridline-color: rgba(46, 82, 110, 150); selection-background-color: rgba(2, 65, 118, 200); selection-color: white; outline: none; }
+            QTableView::item { background-color: transparent; color: white; border-bottom: 1px solid rgba(46, 82, 110, 100); padding: 8px; }
+            QTableCornerButton::section { background-color: rgba(2, 65, 110, 255); border: none; }
+            QAbstractScrollArea { background-color: rgba(25, 45, 60, 200); }
+            QTabWidget::pane { border: 1px solid rgba(46, 82, 110, 255); background-color: rgba(16, 30, 41, 240); }
+            QTabBar::tab { background-color: rgba(25, 45, 60, 200); color: white; padding: 16px 24px; margin-right: 2px; font-size: 13px; font-weight: bold; border: 1px solid rgba(46, 82, 110, 255); border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; }
+            QTabBar::tab:selected { background-color: rgba(2, 65, 118, 255); border-color: rgba(66, 122, 160, 255); }
+            QTabBar::tab:hover:!selected { background-color: rgba(2, 65, 118, 150); }
+            QCheckBox { color: white; font-size: 13px; spacing: 10px; font-weight: bold; }
+            QCheckBox::indicator { width: 18px; height: 18px; border: 1px solid rgba(46, 82, 110, 255); border-radius: 3px; background-color: rgba(25, 45, 60, 200); }
+            QCheckBox::indicator:checked { background-color: rgba(2, 65, 118, 255); }
+            QCheckBox::indicator:hover { border: 1px solid rgba(66, 122, 160, 255); }
+            QGroupBox { border: 1px solid rgba(46, 82, 110, 255); border-radius: 4px; margin-top: 20px; font-weight: bold; padding-top: 10px; }
+            QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 5px; left: 10px; color: white; }
+        """)
 
         # Таб 1: Обычные View
         self.tab_views = QWidget()
@@ -302,16 +101,23 @@ class ViewsManagerDialog(QDialog):
         layout.addWidget(self.listViews, 1)
 
         btnLayout = QVBoxLayout()
+        # Кнопка создания
+        self.btnCreateNew = QPushButton("➕ Создать новое")
+        self.btnCreateNew.setStyleSheet("background-color: #2E7D32; color: white;")
+        
         self.btnViewData = QPushButton("Показать данные")
         self.btnViewDDL = QPushButton("Показать структуру (DDL)")
         self.btnViewDrop = QPushButton("Удалить VIEW")
 
+        btnLayout.addWidget(self.btnCreateNew) 
+        btnLayout.addSpacing(20)
         btnLayout.addWidget(self.btnViewData)
         btnLayout.addWidget(self.btnViewDDL)
         btnLayout.addWidget(self.btnViewDrop)
         btnLayout.addStretch()
         layout.addLayout(btnLayout)
 
+        self.btnCreateNew.clicked.connect(self._open_builder)
         self.btnViewData.clicked.connect(lambda: self._show_data(False))
         self.btnViewDDL.clicked.connect(lambda: self._show_ddl(False))
         self.btnViewDrop.clicked.connect(lambda: self._drop_view(False))
@@ -323,11 +129,17 @@ class ViewsManagerDialog(QDialog):
         layout.addWidget(self.listMatViews, 1)
 
         btnLayout = QVBoxLayout()
+        # Кнопка создания (также нужна здесь)
+        self.btnCreateMat = QPushButton("➕ Создать новое")
+        self.btnCreateMat.setStyleSheet("background-color: #2E7D32; color: white;")
+
         self.btnMatData = QPushButton("Показать данные")
         self.btnMatDDL = QPushButton("Показать структуру (DDL)")
         self.btnMatRefresh = QPushButton("Обновить данные (REFRESH)")
         self.btnMatDrop = QPushButton("Удалить MAT VIEW")
 
+        btnLayout.addWidget(self.btnCreateMat)
+        btnLayout.addSpacing(20)
         btnLayout.addWidget(self.btnMatData)
         btnLayout.addWidget(self.btnMatDDL)
         btnLayout.addWidget(self.btnMatRefresh)
@@ -335,24 +147,43 @@ class ViewsManagerDialog(QDialog):
         btnLayout.addStretch()
         layout.addLayout(btnLayout)
 
+        self.btnCreateMat.clicked.connect(self._open_builder)
         self.btnMatData.clicked.connect(lambda: self._show_data(True))
         self.btnMatDDL.clicked.connect(lambda: self._show_ddl(True))
         self.btnMatRefresh.clicked.connect(self._refresh_mat)
         self.btnMatDrop.clicked.connect(lambda: self._drop_view(True))
 
+    def _open_builder(self):
+        """
+        Открывает конструктор.
+        Ключевой момент: dlg.exec_() останавливает выполнение этого метода, пока окно не закроется.
+        Сразу после закрытия выполняется self.load_lists(), обновляя таблицы.
+        """
+        try:
+            from select_builder_dialog import SelectBuilderDialog
+            dlg = SelectBuilderDialog(self, self.schema)
+            dlg.exec_()  # Ждем закрытия окна
+            self.load_lists() # Обновляем списки СРАЗУ ПОСЛЕ закрытия
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть конструктор:\n{e}")
+
     def load_lists(self):
+        """Перечитывает списки из БД"""
         self.listViews.clear()
         self.listMatViews.clear()
         try:
+            # 1. Загружаем обычные View
             views = db.list_views(self.schema)
             for v in views:
                 self.listViews.addItem(v)
 
+            # 2. Загружаем Materialized View
             mats = db.list_mat_views(self.schema)
             for m in mats:
                 self.listMatViews.addItem(m)
+                
         except Exception as e:
-            QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки списков: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка обновления списков: {e}")
 
     def _get_current(self, is_mat):
         lst = self.listMatViews if is_mat else self.listViews
@@ -409,7 +240,10 @@ class ViewsManagerDialog(QDialog):
         if ret == QMessageBox.Yes:
             try:
                 db.drop_view(self.schema, name, is_mat)
-                self.load_lists()
+                self.load_lists() # Здесь тоже обновляем после удаления
                 self.txtResult.setText(f"{type_str} '{name}' удалено.")
+                self.tblResult.clear()
+                self.tblResult.setRowCount(0)
+                self.tblResult.setColumnCount(0)
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))

@@ -171,16 +171,15 @@ def refresh_mat_view(schema: str, view_name: str):
 
 def create_view_from_select(schema: str, view_name: str, select_sql: str, materialized: bool = False):
     """Создает представление на основе сгенерированного SQL"""
-    kind = "MATERIALIZED VIEW" if materialized else "VIEW"
-    # Для Mat View нельзя использовать OR REPLACE, поэтому сначала удаляем (или используем IF NOT EXISTS логику в приложении)
-    # Но обычно CREATE OR REPLACE работает только для VIEW. Для MAT VIEW нужно DROP + CREATE.
-
+    # Исправлена логика создания MAT VIEW
+    
     full_name = f"{schema}.\"{view_name}\""
 
     if materialized:
         # Для мат. вью удаляем старую версию (осторожно, данные теряются)
         run_cmd(f"DROP MATERIALIZED VIEW IF EXISTS {full_name} CASCADE")
         sql = f"CREATE MATERIALIZED VIEW {full_name} AS {select_sql}"
+        run_cmd(sql) # <--- ВОТ ЗДЕСЬ БЫЛА ОШИБКА (отсутствовал вызов)
     else:
         sql = f"CREATE OR REPLACE VIEW {full_name} AS {select_sql}"
         run_cmd(sql)
